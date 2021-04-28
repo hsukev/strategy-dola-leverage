@@ -117,6 +117,8 @@ contract Strategy is BaseStrategy {
     }
 
     function setBorrowToken(address _cToken) external onlyKeepers {
+        comptroller.exitMarket(borrowedToken);
+        comptroller.enterMarkets(_cToken);
         borrowedToken = CTokenInterface(address(_cToken));
     }
     // Override this to add all tokens/tokenized positions this contract manages
