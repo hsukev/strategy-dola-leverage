@@ -19,5 +19,9 @@
       "pre-commit": "yarn lint:fix",
       "commit-msg": "commitlint -E HUSKY_GIT_PARAMS"
     }
+  },
+  "dependencies": {
+    "@openzeppelin/contracts": "^4.0.0",
+    "@yearnvaults/contracts": "^1.0.1"
   }
 }
