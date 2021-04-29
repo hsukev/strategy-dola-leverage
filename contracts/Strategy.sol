@@ -21,11 +21,18 @@ contract Strategy is BaseStrategy {
         uint256 externalSupply;
     }
 
+    modifier onlyGuest() {
+        require(msg.sender == guest, "!guest");
+        _;
+    }
+
     ComptrollerInterface public comptroller;
     CTokenInterface public suppliedToken;
     CTokenInterface public borrowedToken;
     AccountBook private account;
+    VaultAPI public delegatedVault;
 
+    address public guest;
     address[] private markets;
 
     constructor(address _vault) public BaseStrategy(_vault) {
@@ -39,6 +46,7 @@ contract Strategy is BaseStrategy {
         // anEth to borrow
         borrowedToken = CTokenInterface(address(0x697b4acAa24430F254224eB794d2a85ba1Fa1FB8));
         comptroller = ComptrollerInterface(address(0x4dCf7407AE5C07f8681e1659f626E114A7667339));
+        delegatedVault = VaultAPI(address(0xa9fE4601811213c340e850ea305481afF02f5b28));
         markets = [address(suppliedToken), address(borrowedToken)];
         comptroller.enterMarkets(markets);
 
@@ -64,10 +72,17 @@ contract Strategy is BaseStrategy {
         account = AccountBook(account.supply, account.externalSupply.add(_amount));
     }
 
-    function whitelistDepositors() onlyGovernance external {
 
+    function burn(uint256 _amount) public onlyGovernance onlyGuest {
+        // withdraw from eth vault
+        //        delegatedVault.withdraw();
+
+        // repay debt and get anDola back
+        //         comptroller.repayBorrowAllowed(borrowedToken, address(this), address(this), amount);
+
+        // return anDola -> Dola?
+        //        want.burn();
     }
-
 
     function estimatedTotalAssets() public view override returns (uint256) {
         // TODO: Build a more accurate estimate using the value of all positions in terms of `want`
@@ -87,11 +102,7 @@ contract Strategy is BaseStrategy {
     function adjustPosition(uint256 _debtOutstanding) internal override {
     }
 
-    function liquidatePosition(uint256 _amountNeeded)
-    internal
-    override
-    returns (uint256 _liquidatedAmount, uint256 _loss)
-    {
+    function liquidatePosition(uint256 _amountNeeded) internal override returns (uint256 _liquidatedAmount, uint256 _loss){
         // TODO: Do stuff here to free up to `_amountNeeded` from all positions back into `want`
         // NOTE: Maintain invariant `want.balanceOf(this) >= _liquidatedAmount`
         // NOTE: Maintain invariant `_liquidatedAmount + _loss <= _amountNeeded`
@@ -105,8 +116,6 @@ contract Strategy is BaseStrategy {
         }
     }
 
-    // NOTE: Can override `tendTrigger` and `harvestTrigger` if necessary
-
     function prepareMigration(address _newStrategy) internal override {
         // TODO: Transfer any non-`want` tokens to the new strategy
         // NOTE: `migrate` will automatically forward all `want` in this strategy to the new one
@@ -116,11 +125,16 @@ contract Strategy is BaseStrategy {
         comptroller = ComptrollerInterface(address(_newComptroller));
     }
 
-    function setBorrowToken(address _cToken) external onlyKeepers {
+    function setBorrowToken(address _cToken, address _tokenVault) external onlyKeepers {
+        CTokenInterface newToken = CTokenInterface(address(_cToken));
         comptroller.exitMarket(borrowedToken);
         comptroller.enterMarkets(_cToken);
-        borrowedToken = CTokenInterface(address(_cToken));
     }
+
+    function setGuest(address _guest) onlyGovernance external {
+        guest = _guest;
+    }
+
     // Override this to add all tokens/tokenized positions this contract manages
     // on a *persistent* basis (e.g. not just for swapping back to want ephemerally)
     // NOTE: Do *not* include `want`, already included in `sweep` below
