@@ -7,17 +7,21 @@ interface ComptrollerInterface {
     /*** Assets You Are In ***/
 
     function enterMarkets(address[] calldata cTokens) external returns (uint[] memory);
+
     function exitMarket(address cToken) external returns (uint);
 
     /*** Policy Hooks ***/
 
     function mintAllowed(address cToken, address minter, uint mintAmount) external returns (uint);
+
     function mintVerify(address cToken, address minter, uint mintAmount, uint mintTokens) external;
 
     function redeemAllowed(address cToken, address redeemer, uint redeemTokens) external returns (uint);
+
     function redeemVerify(address cToken, address redeemer, uint redeemAmount, uint redeemTokens) external;
 
     function borrowAllowed(address cToken, address borrower, uint borrowAmount) external returns (uint);
+
     function borrowVerify(address cToken, address borrower, uint borrowAmount) external;
 
     function repayBorrowAllowed(
@@ -25,6 +29,7 @@ interface ComptrollerInterface {
         address payer,
         address borrower,
         uint repayAmount) external returns (uint);
+
     function repayBorrowVerify(
         address cToken,
         address payer,
@@ -38,6 +43,7 @@ interface ComptrollerInterface {
         address liquidator,
         address borrower,
         uint repayAmount) external returns (uint);
+
     function liquidateBorrowVerify(
         address cTokenBorrowed,
         address cTokenCollateral,
@@ -52,6 +58,7 @@ interface ComptrollerInterface {
         address liquidator,
         address borrower,
         uint seizeTokens) external returns (uint);
+
     function seizeVerify(
         address cTokenCollateral,
         address cTokenBorrowed,
@@ -60,6 +67,7 @@ interface ComptrollerInterface {
         uint seizeTokens) external;
 
     function transferAllowed(address cToken, address src, address dst, uint transferTokens) external returns (uint);
+
     function transferVerify(address cToken, address src, address dst, uint transferTokens) external;
 
     /*** Liquidity/Liquidation Calculations ***/
@@ -68,6 +76,8 @@ interface ComptrollerInterface {
         address cTokenBorrowed,
         address cTokenCollateral,
         uint repayAmount) external view returns (uint, uint);
+
+    function markets(address cToken) external view returns (bool isListed, uint256 collatFactorMantissa, bool isComped);
 }
 
 interface CTokenStorage {
@@ -164,31 +174,52 @@ interface CTokenInterface {
     /*** User Interface ***/
 
     function transfer(address dst, uint amount) external returns (bool);
+
     function transferFrom(address src, address dst, uint amount) external returns (bool);
+
     function approve(address spender, uint amount) external returns (bool);
+
     function allowance(address owner, address spender) external view returns (uint);
+
     function balanceOf(address owner) external view returns (uint);
+
     function balanceOfUnderlying(address owner) external returns (uint);
+
     function getAccountSnapshot(address account) external view returns (uint, uint, uint, uint);
+
     function borrowRatePerBlock() external view returns (uint);
+
     function supplyRatePerBlock() external view returns (uint);
+
     function totalBorrowsCurrent() external returns (uint);
+
     function borrowBalanceCurrent(address account) external returns (uint);
+
     function borrowBalanceStored(address account) external view returns (uint);
+
     function exchangeRateCurrent() external returns (uint);
+
     function exchangeRateStored() external view returns (uint);
+
     function getCash() external view returns (uint);
+
     function accrueInterest() external returns (uint);
+
     function seize(address liquidator, address borrower, uint seizeTokens) external returns (uint);
 
 
     /*** Admin Functions ***/
 
     function _setPendingAdmin(address payable newPendingAdmin) external returns (uint);
+
     function _acceptAdmin() external returns (uint);
+
     function _setComptroller(ComptrollerInterface newComptroller) external returns (uint);
+
     function _setReserveFactor(uint newReserveFactorMantissa) external returns (uint);
+
     function _reduceReserves(uint reduceAmount) external returns (uint);
+
     function _setInterestRateModel(InterestRateModel newInterestRateModel) external returns (uint);
 }
 
@@ -196,11 +227,17 @@ interface CErc20Interface is CTokenInterface {
 
     /*** User Interface ***/
     function mint(uint mintAmount) external returns (uint);
+
     function redeem(uint redeemTokens) external returns (uint);
+
     function redeemUnderlying(uint redeemAmount) external returns (uint256);
+
     function borrow(uint borrowAmount) external returns (uint);
+
     function repayBorrow(uint repayAmount) external returns (uint);
+
     function repayBorrowBehalf(address borrower, uint repayAmount) external returns (uint);
+
     function liquidateBorrow(address borrower, uint repayAmount, CTokenInterface cTokenCollateral) external returns (uint);
 
     /*** Admin Functions ***/

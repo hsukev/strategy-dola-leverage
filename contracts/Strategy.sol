@@ -37,6 +37,7 @@ contract Strategy is BaseStrategy {
 
     address public guest;
     address[] private markets;
+    uint256 targetCollateralFactor;
 
     constructor(address _vault, address _supplyToken, address _borrowToken, address _rewardToken, address _delegatedVault) public BaseStrategy(_vault) {
         suppliedToken = CErc20Interface(_supplyToken);
@@ -64,7 +65,6 @@ contract Strategy is BaseStrategy {
     function delegatedAssets() external override view returns (uint256) {
         return balanceOfDelegated();
     }
-
 
     function externalDeposit(uint256 _amount, address token) external {
         require(token == address(want), "wrong underlying token!");
@@ -125,7 +125,7 @@ contract Strategy is BaseStrategy {
         uint256 _amountInShares = _amount.div(delegatedVault.pricePerShare());
         uint256 _withdrawnAmount = delegatedVault.withdraw(_amountInShares, address(this));
 
-        // repay borrowed YFI
+        // repay borrowed
         borrowedToken.repayBorrow(_withdrawnAmount);
 
         // redeem dola back
@@ -133,9 +133,7 @@ contract Strategy is BaseStrategy {
     }
 
     function adjustPosition(uint256 _debtOutstanding) internal override {
-        // deposit loose dola
-
-        // rebalance borrow/supply
+        targetCollateralFactor;
     }
 
     function liquidatePosition(uint256 _amountNeeded) internal override returns (uint256 _liquidatedAmount, uint256 _loss){
@@ -176,6 +174,14 @@ contract Strategy is BaseStrategy {
 
     function setRewardToken(address _rewardToken) onlyGovernance externalDeposit {
         rewardToken = _rewardToken;
+    }
+
+    function setTargetCollateralFactor(uint256 _target) external onlyKeepers {
+        uint256 safeCollateralFactor = comptroller.markets(address(suppliedToken));
+        require(_target > safeCollateralFactor, "target collateral factor too low");
+
+        targetCollateralFactor = _target;
+        adjustPosition(0);
     }
 
     // Override this to add all tokens/tokenized positions this contract manages
