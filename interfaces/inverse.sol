@@ -73,7 +73,7 @@ interface ComptrollerInterface {
 interface CTokenStorage {
 }
 
-interface CTokenInterface is CTokenStorage {
+interface CTokenInterface {
 
     /*** Market Events ***/
 
@@ -192,13 +192,9 @@ interface CTokenInterface is CTokenStorage {
     function _setInterestRateModel(InterestRateModel newInterestRateModel) external returns (uint);
 }
 
-interface CErc20Storage {
-}
-
-interface CErc20Interface is CErc20Storage {
+interface CErc20Interface is CTokenInterface {
 
     /*** User Interface ***/
-
     function mint(uint mintAmount) external returns (uint);
     function redeem(uint redeemTokens) external returns (uint);
     function redeemUnderlying(uint redeemAmount) external returns (uint);
@@ -207,16 +203,13 @@ interface CErc20Interface is CErc20Storage {
     function repayBorrowBehalf(address borrower, uint repayAmount) external returns (uint);
     function liquidateBorrow(address borrower, uint repayAmount, CTokenInterface cTokenCollateral) external returns (uint);
 
-
     /*** Admin Functions ***/
 
     function _addReserves(uint addAmount) external returns (uint);
 }
 
-interface CDelegationStorage {
-}
 
-interface CDelegatorInterface is CDelegationStorage {
+interface CDelegatorInterface {
     /**
      * @dev Emitted when implementation is changed
      */
@@ -231,7 +224,7 @@ interface CDelegatorInterface is CDelegationStorage {
     function _setImplementation(address implementation_, bool allowResign, bytes memory becomeImplementationData) external;
 }
 
-interface CDelegateInterface is CDelegationStorage {
+interface CDelegateInterface {
     /**
      * @dev Called by the delegator on a delegate to initialize it for duty
      * @dev Should revert if any issues arise which make it unfit for delegation
