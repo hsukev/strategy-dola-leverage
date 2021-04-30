@@ -33,22 +33,21 @@ contract Strategy is BaseStrategy {
     CErc20Interface public borrowedToken;
     AccountBook private account;
     VaultAPI public delegatedVault;
+    CErc20Interface public rewardToken;
 
     address public guest;
     address[] private markets;
 
     constructor(address _vault) public BaseStrategy(_vault) {
-        // You can set these parameters on deployment to whatever you want
-        // maxReportDelay = 6300;
-        // profitFactor = 100;
-        // debtThreshold = 0;
-
         // anDola to supply
         suppliedToken = CErc20Interface(address(0x7Fcb7DAC61eE35b3D4a51117A7c58D53f0a8a670));
         // anYFI
         borrowedToken = CErc20Interface(address(0xde2af899040536884e062D3a334F2dD36F34b4a4));
+        rewardToken = CErc20Interface(address(0x41D5D79431A913C4aE7d69a668ecdfE5fF9DFB68));
+
         comptroller = ComptrollerInterface(address(0x4dCf7407AE5C07f8681e1659f626E114A7667339));
         delegatedVault = VaultAPI(address(0xa9fE4601811213c340e850ea305481afF02f5b28));
+
         markets = [address(suppliedToken), address(borrowedToken)];
         comptroller.enterMarkets(markets);
 
@@ -138,7 +137,6 @@ contract Strategy is BaseStrategy {
 
     // Provide flexibility to switch borrow market in the future?
     function setBorrowToken(address _cToken, address _tokenVault) external onlyKeepers {
-        CTokenInterface newToken = CTokenInterface(address(_cToken));
         comptroller.exitMarket(address(borrowedToken));
 
         address[] memory market;
@@ -148,6 +146,10 @@ contract Strategy is BaseStrategy {
 
     function setGuest(address _guest) onlyGovernance external {
         guest = _guest;
+    }
+
+    function setRewardToken(address _rewardToken) onlyGovernance externalDeposit {
+        rewardToken = _rewardToken;
     }
 
     // Override this to add all tokens/tokenized positions this contract manages
@@ -167,6 +169,7 @@ contract Strategy is BaseStrategy {
         address[] memory protected = new address[](2);
         protected[0] = address(suppliedToken);
         protected[1] = address(borrowedToken);
+        protected[2] = address(rewardToken);
         return protected;
     }
 }
