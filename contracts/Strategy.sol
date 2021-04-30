@@ -38,15 +38,13 @@ contract Strategy is BaseStrategy {
     address public guest;
     address[] private markets;
 
-    constructor(address _vault) public BaseStrategy(_vault) {
-        // anDola to supply
-        suppliedToken = CErc20Interface(address(0x7Fcb7DAC61eE35b3D4a51117A7c58D53f0a8a670));
-        // anYFI
-        borrowedToken = CErc20Interface(address(0xde2af899040536884e062D3a334F2dD36F34b4a4));
-        rewardToken = CErc20Interface(address(0x41D5D79431A913C4aE7d69a668ecdfE5fF9DFB68));
+    constructor(address _vault, address _supplyToken, address _borrowToken, address _rewardToken, address _delegatedVault) public BaseStrategy(_vault) {
+        suppliedToken = CErc20Interface(_supplyToken);
+        borrowedToken = CErc20Interface(_borrowToken);
+        rewardToken = CErc20Interface(_rewardToken);
 
         comptroller = ComptrollerInterface(address(0x4dCf7407AE5C07f8681e1659f626E114A7667339));
-        delegatedVault = VaultAPI(address(0xa9fE4601811213c340e850ea305481afF02f5b28));
+        delegatedVault = VaultAPI(_delegatedVault);
 
         markets = [address(suppliedToken), address(borrowedToken)];
         comptroller.enterMarkets(markets);
@@ -67,9 +65,9 @@ contract Strategy is BaseStrategy {
         return balanceOfDelegated();
     }
 
+
     function externalDeposit(uint256 _amount, address token) external {
         require(token == address(want), "wrong underlying token!");
-
 
         account = AccountBook(account.supply, account.externalSupply.add(_amount));
     }
@@ -85,7 +83,7 @@ contract Strategy is BaseStrategy {
 
     function estimatedTotalAssets() public view override returns (uint256) {
         // TODO: Build a more accurate estimate using the value of all positions in terms of `want`
-        return balanceOfUnstaked();
+        return balanceOfUnstaked().add(balanceOfDelegated());
     }
 
     function balanceOfUnstaked() public view returns (uint256) {
