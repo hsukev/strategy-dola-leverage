@@ -64,7 +64,7 @@ contract Strategy is BaseStrategy {
 
     // account for this when depositing to another vault
     function delegatedAssets() external override view returns (uint256) {
-        return 0;
+        return balanceOfDelegated();
     }
 
     function externalDeposit(uint256 _amount, address token) external {
@@ -76,18 +76,9 @@ contract Strategy is BaseStrategy {
 
     // TODO rough outline
     function burn(uint256 _amount) public onlyGuest {
-        // withdraw from yVault
-        // TODO math here needs correct decimals and price conversion
-        uint256 _amountInShares = _amount.div(delegatedVault.pricePerShare());
-        uint256 _withdrawnAmount = delegatedVault.withdraw(_amountInShares, address(this));
+        unwind(_amount);
 
-        // repay borrowed YFI
-        borrowedToken.repayBorrow(_withdrawnAmount);
-
-        // redeem dola back
-        suppliedToken.redeemUnderlying(_amount);
-
-//        ERC20Burnable(want).burn(_amount);
+        //        ERC20Burnable(want).burn(_amount);
 
         account = AccountBook(account.supply, account.externalSupply.sub(_amount));
     }
@@ -101,12 +92,49 @@ contract Strategy is BaseStrategy {
         return want.balanceOf(address(this));
     }
 
+    function balanceOfDelegated() public view returns (uint256){
+        return rewardToken.balanceOfUnderlying(address(delegatedVault));
+    }
+
     function prepareReturn(uint256 _debtOutstanding) internal override returns (uint256 _profit, uint256 _loss, uint256 _debtPayment){
-        // not sure how this works with a delegated vault
+
+        uint256 _debt = vault.strategies(address(this)).totalDebt;
+        uint256 _totalAssets = estimatedTotalAssets();
+
+        if (_totalAssets > _debt) {
+            uint256 _unwindAmount = _totalAssets.sub(_debt).sub(balanceOfUnstaked());
+            unwind(_unwindAmount);
+            uint256 _harvestedProfit = balanceOfUnstaked();
+
+            _debtPayment = _debtOutstanding;
+            _loss = 0;
+            if (_harvestedProfit > _debtOutstanding) {
+                _profit = _harvestedProfit.sub(_debtOutstanding);
+            } else {
+                _profit = 0;
+            }
+        } else {
+            _loss = _debt.sub(_totalAssets);
+            _profit = 0;
+            _debtPayment = 0;
+        }
+    }
+
+    // unwind from delegated to dola
+    function unwind(uint256 _amount) internal returns (uint256){
+        // withdraw from yVault
+        // TODO math here needs correct decimals and price conversion
+        uint256 _amountInShares = _amount.div(delegatedVault.pricePerShare());
+        uint256 _withdrawnAmount = delegatedVault.withdraw(_amountInShares, address(this));
+
+        // repay borrowed YFI
+        borrowedToken.repayBorrow(_withdrawnAmount);
+
+        // redeem dola back
+        return suppliedToken.redeemUnderlying(_amount);
     }
 
     function adjustPosition(uint256 _debtOutstanding) internal override {
-
         // deposit loose dola
 
         // rebalance borrow/supply
