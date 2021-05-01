@@ -94,7 +94,6 @@ contract Strategy is BaseStrategy {
     }
 
     function prepareReturn(uint256 _debtOutstanding) internal override returns (uint256 _profit, uint256 _loss, uint256 _debtPayment){
-
         uint256 _debt = vault.strategies(address(this)).totalDebt;
         uint256 _totalAssets = estimatedTotalAssets();
 
@@ -132,6 +131,9 @@ contract Strategy is BaseStrategy {
     }
 
     function adjustPosition(uint256 _debtOutstanding) internal override {
+        // TODO deposit loose want to mint more supply -> increase borrowed
+        // TODO claim rewards here (INV), deposit to xINV -> increase borrowed
+
         (_amountBorrowMore, _amountRepay) = calculateBorrowAdjustment();
         if (_amountRepay > 0) {
             // unwind from yVault and repay
@@ -143,6 +145,7 @@ contract Strategy is BaseStrategy {
     // _amountBorrowMore = overcollateralized, safe to borrow more
     // _amountRepay = undercollateralized, need to repay some borrowed
     function calculateBorrowAdjustment() internal returns (uint256 _amountBorrowMore, uint256 _amountRepay){
+        // TODO need proper decimals
         (,, borrowedBal,) = borrowedToken.getAccountSnapshot(address(this));
         uint256 priceBorrowed = comptroller.oracle().getUnderlyingPrice(borrowedToken);
         uint256 valueBorrowed = borrowedToken.mul(priceBorrowed);
@@ -150,6 +153,8 @@ contract Strategy is BaseStrategy {
         (, suppliedCTokenBal, , supplyExchangeRate) = suppliedToken.getAccountSnapshot(address(this));
         uint256 priceSupplied = comptroller.oracle().getUnderlyingPrice(suppliedToken);
         uint256 valueSupplied = suppliedCTokenBal.mul(supplyExchangeRate).mul(priceSupplied);
+
+        // TODO add supplied INV to valueSupplied as well
 
         // amount of borrowed token to adjust to maintain targetCollateralFactor
         int256 delta = valueSupplied.mul(targetCollateralFactor).sub(valueBorrowed).div(priceBorrowed);
