@@ -20,32 +20,31 @@ contract Strategy is BaseStrategy {
     }
 
     ComptrollerInterface public comptroller;
-    CErc20Interface public suppliedToken;
-    CErc20Interface public borrowedToken;
-    CErc20Interface public privateMarket;
+    CErc20Interface public cWant;
+    CErc20Interface public cBorrowed;
+    CErc20Interface public cSupplied; // private market for Yearn
     VaultAPI public delegatedVault;
-    CErc20Interface public rewardToken;
-    ERC20 public stableToken;
+    IERC20 public reward;
+    IERC20 public suppliedToken;
 
     address public inverseGovernance;
-    address[] private markets;
     uint256 public targetCollateralFactor;
-    uint256 public inverseSuppliedWant;
 
 
-    constructor(address _vault, address _supplyToken, address _borrowToken, address _rewardToken, address _delegatedVault) public BaseStrategy(_vault) {
-        suppliedToken = CErc20Interface(_supplyToken);
-        borrowedToken = CErc20Interface(_borrowToken);
-        rewardToken = CErc20Interface(_rewardToken);
+    constructor(address _vault, address _cWant, address _cBorrowed, address _reward, address _delegatedVault) public BaseStrategy(_vault) {
+        cWant = CErc20Interface(_supplyToken);
+        cBorrowed = CErc20Interface(_cBorrowed);
+        reward = IERC20(_reward);
 
         comptroller = ComptrollerInterface(address(0x4dCf7407AE5C07f8681e1659f626E114A7667339));
-        stableToken = ERC20(address(0x865377367054516e17014CcdED1e7d814EDC9ce4));
         delegatedVault = VaultAPI(_delegatedVault);
 
-        markets = [address(suppliedToken), address(borrowedToken)];
+        address[] memory markets = new address[](2);
+        markets[0] = address(cWant);
+        markets[1] = address(cBorrowed);
         comptroller.enterMarkets(markets);
 
-        want.safeApprove(address(suppliedToken), uint256(- 1));
+        want.safeApprove(address(cWant), uint256(-1));
     }
 
     //
@@ -59,12 +58,11 @@ contract Strategy is BaseStrategy {
 
     // account for this when depositing to another vault
     function delegatedAssets() external override view returns (uint256) {
-        return balanceOfDelegated();
+        return delegatedVault.balanceOf(address(this)).mul(delegatedVault.pricePerShare());
     }
 
     function estimatedTotalAssets() public view override returns (uint256) {
-        // TODO: Build a more accurate estimate using the value of all positions in terms of `want`
-        return balanceOfWant().add(valueOfDelegated(balanceOfDelegated()));
+        return balanceOfWant().add(valueOfCWant()).add(valueOfDelegated()).sub(valueOfBorrowed());
     }
 
     function prepareReturn(uint256 _debtOutstanding) internal override returns (uint256 _profit, uint256 _loss, uint256 _debtPayment){
@@ -136,9 +134,9 @@ contract Strategy is BaseStrategy {
     //    }
     function protectedTokens() internal view override returns (address[] memory){
         address[] memory protected = new address[](2);
-        protected[0] = address(suppliedToken);
-        protected[1] = address(borrowedToken);
-        protected[2] = address(rewardToken);
+        protected[0] = address(cWant);
+        protected[1] = address(cBorrowed);
+        protected[2] = address(reward);
         return protected;
     }
 
@@ -155,22 +153,22 @@ contract Strategy is BaseStrategy {
         uint256 _withdrawnAmount = delegatedVault.withdraw(_amountInShares, address(this));
 
         // repay borrowed
-        borrowedToken.repayBorrow(_withdrawnAmount);
+        cBorrowed.repayBorrow(_withdrawnAmount);
 
         // redeem dola back
-        return suppliedToken.redeemUnderlying(_amount);
+        return cWant.redeemUnderlying(_amount);
     }
 
     // _amountBorrowMore = overcollateralized, safe to borrow more
     // _amountRepay = undercollateralized, need to repay some borrowed
     function calculateBorrowAdjustment() internal returns (uint256 _amountBorrowMore, uint256 _amountRepay){
         // TODO need proper decimals
-        (,, uint256 borrowedBal,) = borrowedToken.getAccountSnapshot(address(this));
-        uint256 priceBorrowed = comptroller.oracle().getUnderlyingPrice(address(borrowedToken));
+        (,, uint256 borrowedBal,) = cBorrowed.getAccountSnapshot(address(this));
+        uint256 priceBorrowed = comptroller.oracle().getUnderlyingPrice(address(cBorrowed));
         uint256 valueBorrowed = borrowedBal.mul(priceBorrowed);
 
-        (, uint256 suppliedCTokenBal, , uint256 supplyExchangeRate) = suppliedToken.getAccountSnapshot(address(this));
-        uint256 priceSupplied = comptroller.oracle().getUnderlyingPrice(address(suppliedToken));
+        (, uint256 suppliedCTokenBal, , uint256 supplyExchangeRate) = cWant.getAccountSnapshot(address(this));
+        uint256 priceSupplied = comptroller.oracle().getUnderlyingPrice(address(cWant));
         uint256 valueSupplied = suppliedCTokenBal.mul(supplyExchangeRate).mul(priceSupplied);
 
         // TODO add supplied INV to valueSupplied as well
@@ -188,13 +186,23 @@ contract Strategy is BaseStrategy {
         return want.balanceOf(address(this));
     }
 
-    function balanceOfDelegated() public view returns (uint256){
-        // TODO is this how..?
-        return delegatedVault.balanceOf(address(this)).mul(delegatedVault.pricePerShare());
+    function valueOfWant() public view returns (uint256){
+        return 0;
     }
 
-    // valued in terms of want
-    function valueOfDelegated(uint256 _amount) public view returns (uint256){
+    function valueOfCWant() public view returns (uint256){
+        return 0;
+    }
+
+    function valueOfCSupplied() public view returns (uint256){
+        return 0;
+    }
+
+    function valueOfBorrowed() public view returns (uint256){
+        return 0;
+    }
+
+    function valueOfDelegated() public view returns (uint256){
         return 0;
     }
 
@@ -207,57 +215,53 @@ contract Strategy is BaseStrategy {
     }
 
     // Provide flexibility to switch borrow market in the future
-    function setBorrowToken(address _cToken, address _tokenVault) external onlyAuthorized {
-        comptroller.exitMarket(address(borrowedToken));
+    function setCBorrowed(address _address, address _tokenVault) external onlyAuthorized {
+        comptroller.exitMarket(address(cBorrowed));
+        cBorrowed = CErc20Interface(_address);
 
-        address[] memory market;
-        market[0] = _cToken;
+        address[] memory markets = new address[](1);
+        markets[0] = _address;
         comptroller.enterMarkets(market);
     }
 
-    function setInverseGovernance(address _inverseGovernance) external onlyAuthorized {
-        inverseGovernance = _inverseGovernance;
-    }
-
-    function setRewardToken(address _rewardToken) external onlyAuthorized {
-        rewardToken = CErc20Interface(_rewardToken);
+    // TODO: do we want this felxibility?
+    function setRewardToken(address _reward) external onlyAuthorized {
+        reward = IERC20(_reward);
     }
 
     function setTargetCollateralFactor(uint256 _target) external onlyAuthorized {
-        (, uint256 safeCollateralFactor,) = comptroller.markets(address(suppliedToken));
+        (, uint256 safeCollateralFactor,) = comptroller.markets(address(cWant));
         require(_target > safeCollateralFactor, "target collateral factor too low");
 
         targetCollateralFactor = _target;
         adjustPosition(0);
     }
 
+    function setInverseGovernance(address _inverseGovernance) external onlyGovernance {
+        inverseGovernance = _inverseGovernance;
+    }
+
     //
     // For Inverse Finance
     //
-    function setPrivateMarket(address _address) external onlyInverseGovernance {
-        privateMarket = CErc20Interface(address(_address));
+
+    function setCSupplied(address _address) external onlyInverseGovernance {
+        comptroller.exitMarket(address(cSupplied));
+        cSupplied = CErc20Interface(address(_address));
+
+        address[] memory markets = new address[](1);
+        markets[0] = _address;
+        comptroller.enterMarkets(market);
     }
 
-    function setStableToken(address _address) external onlyInverseGovernance {
-        stableToken = ERC20(address(_address));
+    function supplyCollateral(uint256 _amount) external onlyInverseGovernance {
+        suppliedToken.safeTransferFrom(msg.sender, address(this), _amount);
     }
 
-    function mintStable(uint256 _amount) external onlyInverseGovernance {
-        //TODO internal method...not sure how to mint yet
-        //        stableToken._mint(address(this), _amount);
-        inverseSuppliedWant += _amount;
-    }
+    function removeCollateral(uint256 _amount) external onlyInverseGovernance {
+        // TODO: calculate amount to unwind to maintain collateral ratio, should be similar to adjust position
+        // TODO: unwind from vault -> borrowed -> cWant
 
-    function burnStable(uint256 _amount) external onlyInverseGovernance {
-        require(_amount <= inverseSuppliedWant, "insufficient supply");
-
-        uint256 unwoundAmount;
-        if (_amount > balanceOfWant()) {
-            unwoundAmount = unwind(_amount - balanceOfWant());
-        }
-
-        //TODO internal method...not sure how to burn yet
-        //        stableToken._burn(address(this), unwoundAmount);
-        inverseSuppliedWant -= _amount;
+        cSupplied.safeTransfer(msg.sender, _amount);
     }
 }
