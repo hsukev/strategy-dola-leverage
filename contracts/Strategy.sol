@@ -4,7 +4,7 @@ pragma experimental ABIEncoderV2;
 
 import {BaseStrategy, StrategyParams, VaultAPI} from "@yearnvaults/contracts/BaseStrategy.sol";
 import {SafeERC20, SafeMath, IERC20, Address} from "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
-import {ERC20Burnable} from "@openzeppelin/contracts/token/ERC20/ERC20Burnable.sol";
+import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 import "../interfaces/inverse.sol";
 
@@ -22,13 +22,16 @@ contract Strategy is BaseStrategy {
     ComptrollerInterface public comptroller;
     CErc20Interface public suppliedToken;
     CErc20Interface public borrowedToken;
+    CErc20Interface public privateMarket;
     VaultAPI public delegatedVault;
     CErc20Interface public rewardToken;
+    ERC20 public stableToken;
 
     address public inverseGovernance;
     address[] private markets;
     uint256 public targetCollateralFactor;
     uint256 public inverseSuppliedWant;
+
 
     constructor(address _vault, address _supplyToken, address _borrowToken, address _rewardToken, address _delegatedVault) public BaseStrategy(_vault) {
         suppliedToken = CErc20Interface(_supplyToken);
@@ -36,6 +39,7 @@ contract Strategy is BaseStrategy {
         rewardToken = CErc20Interface(_rewardToken);
 
         comptroller = ComptrollerInterface(address(0x4dCf7407AE5C07f8681e1659f626E114A7667339));
+        stableToken = ERC20(address(0x865377367054516e17014CcdED1e7d814EDC9ce4));
         delegatedVault = VaultAPI(_delegatedVault);
 
         markets = [address(suppliedToken), address(borrowedToken)];
@@ -60,7 +64,7 @@ contract Strategy is BaseStrategy {
 
     function estimatedTotalAssets() public view override returns (uint256) {
         // TODO: Build a more accurate estimate using the value of all positions in terms of `want`
-        return balanceOfWant().add(balanceOfDelegated());
+        return balanceOfWant().add(valueOfDelegated(balanceOfDelegated()));
     }
 
     function prepareReturn(uint256 _debtOutstanding) internal override returns (uint256 _profit, uint256 _loss, uint256 _debtPayment){
@@ -172,11 +176,11 @@ contract Strategy is BaseStrategy {
         // TODO add supplied INV to valueSupplied as well
 
         // amount of borrowed token to adjust to maintain targetCollateralFactor
-        int256 delta = valueSupplied.mul(targetCollateralFactor).sub(valueBorrowed).div(priceBorrowed);
+        int256 delta = int256((valueSupplied.mul(targetCollateralFactor) - valueBorrowed).div(priceBorrowed));
         if (delta > 0) {
-            return (delta, 0);
+            return (uint256(delta), uint256(0));
         } else {
-            return (0, delta);
+            return (uint256(0), uint256(- delta));
         }
     }
 
@@ -185,7 +189,13 @@ contract Strategy is BaseStrategy {
     }
 
     function balanceOfDelegated() public view returns (uint256){
-        return rewardToken.balanceOfUnderlying(address(delegatedVault));
+        // TODO is this how..?
+        return delegatedVault.balanceOf(address(this)).mul(delegatedVault.pricePerShare());
+    }
+
+    // valued in terms of want
+    function valueOfDelegated(uint256 _amount) public view returns (uint256){
+        return 0;
     }
 
     //
@@ -214,7 +224,7 @@ contract Strategy is BaseStrategy {
     }
 
     function setTargetCollateralFactor(uint256 _target) external onlyAuthorized {
-        uint256 safeCollateralFactor = comptroller.markets(address(suppliedToken));
+        (, uint256 safeCollateralFactor,) = comptroller.markets(address(suppliedToken));
         require(_target > safeCollateralFactor, "target collateral factor too low");
 
         targetCollateralFactor = _target;
@@ -224,20 +234,30 @@ contract Strategy is BaseStrategy {
     //
     // For Inverse Finance
     //
+    function setPrivateMarket(address _address) external onlyInverseGovernance {
+        privateMarket = CErc20Interface(address(_address));
+    }
 
-    function supplyWant(uint256 _amount) external onlyInverseGovernance {
-        want.safeTransferFrom(msg.sender, address(this), _amount);
+    function setStableToken(address _address) external onlyInverseGovernance {
+        stableToken = ERC20(address(_address));
+    }
+
+    function mintStable(uint256 _amount) external onlyInverseGovernance {
+        //TODO internal method...not sure how to mint yet
+        //        stableToken._mint(address(this), _amount);
         inverseSuppliedWant += _amount;
     }
 
-    function burnWant(uint256 _amount) external onlyInverseGovernance {
+    function burnStable(uint256 _amount) external onlyInverseGovernance {
         require(_amount <= inverseSuppliedWant, "insufficient supply");
 
+        uint256 unwoundAmount;
         if (_amount > balanceOfWant()) {
-            unwind(_amount - balanceOfWant());
+            unwoundAmount = unwind(_amount - balanceOfWant());
         }
 
-        ERC20Burnable(address(want)).burn(_amount);
+        //TODO internal method...not sure how to burn yet
+        //        stableToken._burn(address(this), unwoundAmount);
         inverseSuppliedWant -= _amount;
     }
 }
