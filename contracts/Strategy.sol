@@ -1,14 +1,10 @@
 // SPDX-License-Identifier: AGPL-3.0
-// Feel free to change the license, but this is what we use
-
-// Feel free to change this version of Solidity. We support >=0.6.0 <0.7.0;
 pragma solidity 0.6.12;
 pragma experimental ABIEncoderV2;
 
-// These are the core Yearn libraries
 import {BaseStrategy, StrategyParams, VaultAPI} from "@yearnvaults/contracts/BaseStrategy.sol";
 import {SafeERC20, SafeMath, IERC20, Address} from "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
-import "@openzeppelin/contracts/token/ERC20/ERC20Burnable.sol";
+import {ERC20Burnable} from "@openzeppelin/contracts/token/ERC20/ERC20Burnable.sol";
 
 import "../interfaces/inverse.sol";
 
@@ -18,26 +14,21 @@ contract Strategy is BaseStrategy {
     using Address for address;
     using SafeMath for uint256;
 
-    struct AccountBook {
-        uint256 supply;
-        uint256 externalSupply;
-    }
-
-    modifier onlyGuest() {
-        require(msg.sender == guest, "!guest");
+    modifier onlyInverseGovernance() {
+        require(msg.sender == inverseGovernance, "!inverseGovernance");
         _;
     }
 
     ComptrollerInterface public comptroller;
     CErc20Interface public suppliedToken;
     CErc20Interface public borrowedToken;
-    AccountBook private account;
     VaultAPI public delegatedVault;
     CErc20Interface public rewardToken;
 
-    address public guest;
+    address public inverseGovernance;
     address[] private markets;
-    uint256 targetCollateralFactor;
+    uint256 public targetCollateralFactor;
+    uint256 public inverseSuppliedWant;
 
     constructor(address _vault, address _supplyToken, address _borrowToken, address _rewardToken, address _delegatedVault) public BaseStrategy(_vault) {
         suppliedToken = CErc20Interface(_supplyToken);
@@ -50,15 +41,16 @@ contract Strategy is BaseStrategy {
         markets = [address(suppliedToken), address(borrowedToken)];
         comptroller.enterMarkets(markets);
 
-        account = AccountBook(0, 0);
         want.safeApprove(address(suppliedToken), uint256(- 1));
     }
 
-    // ******** OVERRIDE THESE METHODS FROM BASE CONTRACT ************
+    //
+    // BaseContract overrides
+    //
 
     function name() external view override returns (string memory) {
-        // Add your own name here, suggestion e.g. "StrategyCreamYFI"
-        return "StrategyDolaLeverage";
+        return "StrategyInverseDolaLeverage";
+        // return string(abi.encodePacked("StrategyInverse", IERC20Metadata(address(want)).symbol(), "Leverage"));
     }
 
     // account for this when depositing to another vault
@@ -66,31 +58,9 @@ contract Strategy is BaseStrategy {
         return balanceOfDelegated();
     }
 
-    function externalDeposit(uint256 _amount, address token) external {
-        require(token == address(want), "wrong underlying token!");
-
-        account = AccountBook(account.supply, account.externalSupply.add(_amount));
-    }
-
-    function burn(uint256 _amount) public onlyGuest {
-        unwind(_amount);
-
-        //        ERC20Burnable(want).burn(_amount);
-
-        account = AccountBook(account.supply, account.externalSupply.sub(_amount));
-    }
-
     function estimatedTotalAssets() public view override returns (uint256) {
         // TODO: Build a more accurate estimate using the value of all positions in terms of `want`
-        return balanceOfUnstaked().add(balanceOfDelegated());
-    }
-
-    function balanceOfUnstaked() public view returns (uint256) {
-        return want.balanceOf(address(this));
-    }
-
-    function balanceOfDelegated() public view returns (uint256){
-        return rewardToken.balanceOfUnderlying(address(delegatedVault));
+        return balanceOfWant().add(balanceOfDelegated());
     }
 
     function prepareReturn(uint256 _debtOutstanding) internal override returns (uint256 _profit, uint256 _loss, uint256 _debtPayment){
@@ -98,9 +68,9 @@ contract Strategy is BaseStrategy {
         uint256 _totalAssets = estimatedTotalAssets();
 
         if (_totalAssets > _debt) {
-            uint256 _unwindAmount = _totalAssets.sub(_debt).sub(balanceOfUnstaked());
+            uint256 _unwindAmount = _totalAssets.sub(_debt).sub(balanceOfWant());
             unwind(_unwindAmount);
-            uint256 _harvestedProfit = balanceOfUnstaked();
+            uint256 _harvestedProfit = balanceOfWant();
 
             _debtPayment = _debtOutstanding;
             _loss = 0;
@@ -116,52 +86,15 @@ contract Strategy is BaseStrategy {
         }
     }
 
-    // unwind from delegated to dola
-    function unwind(uint256 _amount) internal returns (uint256){
-        // withdraw from yVault
-        // TODO math here needs correct decimals and price conversion
-        uint256 _amountInShares = _amount.div(delegatedVault.pricePerShare());
-        uint256 _withdrawnAmount = delegatedVault.withdraw(_amountInShares, address(this));
-
-        // repay borrowed
-        borrowedToken.repayBorrow(_withdrawnAmount);
-
-        // redeem dola back
-        return suppliedToken.redeemUnderlying(_amount);
-    }
-
     function adjustPosition(uint256 _debtOutstanding) internal override {
         // TODO deposit loose want to mint more supply -> increase borrowed
         // TODO claim rewards here (INV), deposit to xINV -> increase borrowed
 
-        (_amountBorrowMore, _amountRepay) = calculateBorrowAdjustment();
+        (uint256 _amountBorrowMore, uint256 _amountRepay) = calculateBorrowAdjustment();
         if (_amountRepay > 0) {
             // unwind from yVault and repay
         } else {
             // borrow more
-        }
-    }
-
-    // _amountBorrowMore = overcollateralized, safe to borrow more
-    // _amountRepay = undercollateralized, need to repay some borrowed
-    function calculateBorrowAdjustment() internal returns (uint256 _amountBorrowMore, uint256 _amountRepay){
-        // TODO need proper decimals
-        (,, borrowedBal,) = borrowedToken.getAccountSnapshot(address(this));
-        uint256 priceBorrowed = comptroller.oracle().getUnderlyingPrice(borrowedToken);
-        uint256 valueBorrowed = borrowedToken.mul(priceBorrowed);
-
-        (, suppliedCTokenBal, , supplyExchangeRate) = suppliedToken.getAccountSnapshot(address(this));
-        uint256 priceSupplied = comptroller.oracle().getUnderlyingPrice(suppliedToken);
-        uint256 valueSupplied = suppliedCTokenBal.mul(supplyExchangeRate).mul(priceSupplied);
-
-        // TODO add supplied INV to valueSupplied as well
-
-        // amount of borrowed token to adjust to maintain targetCollateralFactor
-        int256 delta = valueSupplied.mul(targetCollateralFactor).sub(valueBorrowed).div(priceBorrowed);
-        if (delta > 0) {
-            return (delta, 0);
-        } else {
-            return (0, delta);
         }
     }
 
@@ -184,35 +117,6 @@ contract Strategy is BaseStrategy {
         // NOTE: `migrate` will automatically forward all `want` in this strategy to the new one
     }
 
-    function setComptroller(address _newComptroller) external onlyKeepers {
-        comptroller = ComptrollerInterface(address(_newComptroller));
-    }
-
-    // Provide flexibility to switch borrow market in the future?
-    function setBorrowToken(address _cToken, address _tokenVault) external onlyKeepers {
-        comptroller.exitMarket(address(borrowedToken));
-
-        address[] memory market;
-        market[0] = _cToken;
-        comptroller.enterMarkets(market);
-    }
-
-    function setGuest(address _guest) onlyGovernance external {
-        guest = _guest;
-    }
-
-    function setRewardToken(address _rewardToken) onlyGovernance externalDeposit {
-        rewardToken = _rewardToken;
-    }
-
-    function setTargetCollateralFactor(uint256 _target) external onlyKeepers {
-        uint256 safeCollateralFactor = comptroller.markets(address(suppliedToken));
-        require(_target > safeCollateralFactor, "target collateral factor too low");
-
-        targetCollateralFactor = _target;
-        adjustPosition(0);
-    }
-
     // Override this to add all tokens/tokenized positions this contract manages
     // on a *persistent* basis (e.g. not just for swapping back to want ephemerally)
     // NOTE: Do *not* include `want`, already included in `sweep` below
@@ -232,5 +136,108 @@ contract Strategy is BaseStrategy {
         protected[1] = address(borrowedToken);
         protected[2] = address(rewardToken);
         return protected;
+    }
+
+
+    //
+    // Helpers
+    //
+
+    // unwind from delegated to dola
+    function unwind(uint256 _amount) internal returns (uint256){
+        // withdraw from yVault
+        // TODO math here needs correct decimals and price conversion
+        uint256 _amountInShares = _amount.div(delegatedVault.pricePerShare());
+        uint256 _withdrawnAmount = delegatedVault.withdraw(_amountInShares, address(this));
+
+        // repay borrowed
+        borrowedToken.repayBorrow(_withdrawnAmount);
+
+        // redeem dola back
+        return suppliedToken.redeemUnderlying(_amount);
+    }
+
+    // _amountBorrowMore = overcollateralized, safe to borrow more
+    // _amountRepay = undercollateralized, need to repay some borrowed
+    function calculateBorrowAdjustment() internal returns (uint256 _amountBorrowMore, uint256 _amountRepay){
+        // TODO need proper decimals
+        (,, uint256 borrowedBal,) = borrowedToken.getAccountSnapshot(address(this));
+        uint256 priceBorrowed = comptroller.oracle().getUnderlyingPrice(address(borrowedToken));
+        uint256 valueBorrowed = borrowedBal.mul(priceBorrowed);
+
+        (, uint256 suppliedCTokenBal, , uint256 supplyExchangeRate) = suppliedToken.getAccountSnapshot(address(this));
+        uint256 priceSupplied = comptroller.oracle().getUnderlyingPrice(address(suppliedToken));
+        uint256 valueSupplied = suppliedCTokenBal.mul(supplyExchangeRate).mul(priceSupplied);
+
+        // TODO add supplied INV to valueSupplied as well
+
+        // amount of borrowed token to adjust to maintain targetCollateralFactor
+        int256 delta = valueSupplied.mul(targetCollateralFactor).sub(valueBorrowed).div(priceBorrowed);
+        if (delta > 0) {
+            return (delta, 0);
+        } else {
+            return (0, delta);
+        }
+    }
+
+    function balanceOfWant() public view returns (uint256) {
+        return want.balanceOf(address(this));
+    }
+
+    function balanceOfDelegated() public view returns (uint256){
+        return rewardToken.balanceOfUnderlying(address(delegatedVault));
+    }
+
+    //
+    // Setters
+    //
+
+    function setComptroller(address _newComptroller) external onlyAuthorized {
+        comptroller = ComptrollerInterface(address(_newComptroller));
+    }
+
+    // Provide flexibility to switch borrow market in the future
+    function setBorrowToken(address _cToken, address _tokenVault) external onlyAuthorized {
+        comptroller.exitMarket(address(borrowedToken));
+
+        address[] memory market;
+        market[0] = _cToken;
+        comptroller.enterMarkets(market);
+    }
+
+    function setInverseGovernance(address _inverseGovernance) external onlyAuthorized {
+        inverseGovernance = _inverseGovernance;
+    }
+
+    function setRewardToken(address _rewardToken) external onlyAuthorized {
+        rewardToken = CErc20Interface(_rewardToken);
+    }
+
+    function setTargetCollateralFactor(uint256 _target) external onlyAuthorized {
+        uint256 safeCollateralFactor = comptroller.markets(address(suppliedToken));
+        require(_target > safeCollateralFactor, "target collateral factor too low");
+
+        targetCollateralFactor = _target;
+        adjustPosition(0);
+    }
+
+    //
+    // For Inverse Finance
+    //
+
+    function supplyWant(uint256 _amount) external onlyInverseGovernance {
+        want.safeTransferFrom(msg.sender, address(this), _amount);
+        inverseSuppliedWant += _amount;
+    }
+
+    function burnWant(uint256 _amount) external onlyInverseGovernance {
+        require(_amount <= inverseSuppliedWant, "insufficient supply");
+
+        if (_amount > balanceOfWant()) {
+            unwind(_amount - balanceOfWant());
+        }
+
+        ERC20Burnable(address(want)).burn(_amount);
+        inverseSuppliedWant -= _amount;
     }
 }
