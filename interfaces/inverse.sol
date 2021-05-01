@@ -3,7 +3,20 @@
 pragma solidity >=0.6.0 <0.7.0;
 pragma experimental ABIEncoderV2;
 
+interface PriceOracle {
+    /**
+      * @notice Get the underlying price of a cToken asset
+      * @param cToken The cToken to get the underlying price of
+      * @return The underlying asset price mantissa (scaled by 1e18).
+      *  Zero means the price is unavailable.
+      */
+    function getUnderlyingPrice(address cToken) external view returns (uint);
+}
+
 interface ComptrollerInterface {
+    // autogen getter
+    function oracle() external returns (PriceOracle);
+
     /*** Assets You Are In ***/
 
     function enterMarkets(address[] calldata cTokens) external returns (uint[] memory);

@@ -72,7 +72,6 @@ contract Strategy is BaseStrategy {
         account = AccountBook(account.supply, account.externalSupply.add(_amount));
     }
 
-    // TODO rough outline
     function burn(uint256 _amount) public onlyGuest {
         unwind(_amount);
 
@@ -133,7 +132,32 @@ contract Strategy is BaseStrategy {
     }
 
     function adjustPosition(uint256 _debtOutstanding) internal override {
-        targetCollateralFactor;
+        (_amountBorrowMore, _amountRepay) = calculateBorrowAdjustment();
+        if (_amountRepay > 0) {
+            // unwind from yVault and repay
+        } else {
+            // borrow more
+        }
+    }
+
+    // _amountBorrowMore = overcollateralized, safe to borrow more
+    // _amountRepay = undercollateralized, need to repay some borrowed
+    function calculateBorrowAdjustment() internal returns (uint256 _amountBorrowMore, uint256 _amountRepay){
+        (,, borrowedBal,) = borrowedToken.getAccountSnapshot(address(this));
+        uint256 priceBorrowed = comptroller.oracle().getUnderlyingPrice(borrowedToken);
+        uint256 valueBorrowed = borrowedToken.mul(priceBorrowed);
+
+        (, suppliedCTokenBal, , supplyExchangeRate) = suppliedToken.getAccountSnapshot(address(this));
+        uint256 priceSupplied = comptroller.oracle().getUnderlyingPrice(suppliedToken);
+        uint256 valueSupplied = suppliedCTokenBal.mul(supplyExchangeRate).mul(priceSupplied);
+
+        // amount of borrowed token to adjust to maintain targetCollateralFactor
+        int256 delta = valueSupplied.mul(targetCollateralFactor).sub(valueBorrowed).div(priceBorrowed);
+        if (delta > 0) {
+            return (delta, 0);
+        } else {
+            return (0, delta);
+        }
     }
 
     function liquidatePosition(uint256 _amountNeeded) internal override returns (uint256 _liquidatedAmount, uint256 _loss){
