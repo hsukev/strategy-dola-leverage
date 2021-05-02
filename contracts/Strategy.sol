@@ -19,25 +19,29 @@ contract Strategy is BaseStrategy {
         _;
     }
 
+    VaultAPI public delegatedVault;
     ComptrollerInterface public comptroller;
     CErc20Interface public cWant;
     CErc20Interface public cBorrowed;
     CErc20Interface public cSupplied; // private market for Yearn
-    VaultAPI public delegatedVault;
+    IERC20 public borrowed;
     IERC20 public reward;
-    IERC20 public suppliedToken;
 
     address public inverseGovernance;
     uint256 public targetCollateralFactor;
 
 
     constructor(address _vault, address _cWant, address _cBorrowed, address _reward, address _delegatedVault) public BaseStrategy(_vault) {
+        delegatedVault = VaultAPI(_delegatedVault);
+        comptroller = ComptrollerInterface(0x4dCf7407AE5C07f8681e1659f626E114A7667339);
+
         cWant = CErc20Interface(_supplyToken);
         cBorrowed = CErc20Interface(_cBorrowed);
+        borrowed = IERC20(delegatedVault.want());
         reward = IERC20(_reward);
 
-        comptroller = ComptrollerInterface(address(0x4dCf7407AE5C07f8681e1659f626E114A7667339));
-        delegatedVault = VaultAPI(_delegatedVault);
+        assert(cWant.underlying() == address(want), "cWant does not match want");
+        assert(cBorrowed.underlying() == address(borrowed), "borrowed token does not match delegated vault");
 
         address[] memory markets = new address[](2);
         markets[0] = address(cWant);
@@ -62,7 +66,8 @@ contract Strategy is BaseStrategy {
     }
 
     function estimatedTotalAssets() public view override returns (uint256) {
-        return balanceOfWant().add(valueOfCWant()).add(valueOfDelegated()).sub(valueOfBorrowed());
+        uint256 price = comptroller.oracle().getPrice(want);
+        return balanceOfWant().add(valueOfCWant()).add(valueOfDelegated()).sub(valueOfBorrowed()).div(price);
     }
 
     function prepareReturn(uint256 _debtOutstanding) internal override returns (uint256 _profit, uint256 _loss, uint256 _debtPayment){
@@ -163,17 +168,13 @@ contract Strategy is BaseStrategy {
     // _amountRepay = undercollateralized, need to repay some borrowed
     function calculateBorrowAdjustment() internal returns (uint256 _amountBorrowMore, uint256 _amountRepay){
         // TODO need proper decimals
-        (,, uint256 borrowedBal,) = cBorrowed.getAccountSnapshot(address(this));
-        uint256 priceBorrowed = comptroller.oracle().getUnderlyingPrice(address(cBorrowed));
-        uint256 valueBorrowed = borrowedBal.mul(priceBorrowed);
-
-        (, uint256 suppliedCTokenBal, , uint256 supplyExchangeRate) = cWant.getAccountSnapshot(address(this));
-        uint256 priceSupplied = comptroller.oracle().getUnderlyingPrice(address(cWant));
-        uint256 valueSupplied = suppliedCTokenBal.mul(supplyExchangeRate).mul(priceSupplied);
+        uint256 valueBorrowed = valueOfBorrowed();
+        uint256 valueSupplied = valueOfCSupplied();
 
         // TODO add supplied INV to valueSupplied as well
 
         // amount of borrowed token to adjust to maintain targetCollateralFactor
+        uint256 priceBorrowed = comptroller.oracle().getPrice(borrowed);
         int256 delta = int256((valueSupplied.mul(targetCollateralFactor) - valueBorrowed).div(priceBorrowed));
         if (delta > 0) {
             return (uint256(delta), uint256(0));
@@ -182,28 +183,39 @@ contract Strategy is BaseStrategy {
         }
     }
 
+    // Loose want
     function balanceOfWant() public view returns (uint256) {
         return want.balanceOf(address(this));
     }
 
-    function valueOfWant() public view returns (uint256){
-        return 0;
+    // Value of loose want in USD
+    function valueOfWant() public view returns (uint256) {
+        uint256 price = comptroller.oracle().getPrice(want);
+        return balanceOfWant().mul(price);
     }
 
+    // Value of deposited want in USD
     function valueOfCWant() public view returns (uint256){
-        return 0;
+        uint256 price = comptroller.oracle().getUnderlyingPrice(cWant);
+        return cWant.balanceOfUnderlying(address(this)).mul(price);
     }
 
+    // Value of Inverse supplied tokens in USD
     function valueOfCSupplied() public view returns (uint256){
-        return 0;
+        uint256 price = comptroller.oracle().getUnderlyingPrice(cSupplied);
+        return cSupplied.balanceOfUnderlying(address(this)).mul(price);
     }
 
+    // Value of borrowed tokens in USD
     function valueOfBorrowed() public view returns (uint256){
-        return 0;
+        uint256 price = comptroller.oracle().getPrice(borrowed);
+        return borrowed.balanceOf(address(this)).mul(price);
     }
 
+    // Value of delegated vault deposits in USD
     function valueOfDelegated() public view returns (uint256){
-        return 0;
+        uint256 price = comptroller.oracle().getPrice(borrowed);
+        delegatedVault.balanceOf(address(this)).mul(delegatedVault.pricePerShare()).mul(price);
     }
 
     //
@@ -255,7 +267,7 @@ contract Strategy is BaseStrategy {
     }
 
     function supplyCollateral(uint256 _amount) external onlyInverseGovernance {
-        suppliedToken.safeTransferFrom(msg.sender, address(this), _amount);
+        cSupplied.safeTransferFrom(msg.sender, address(this), _amount);
     }
 
     function removeCollateral(uint256 _amount) external onlyInverseGovernance {
