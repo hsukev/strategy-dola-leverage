@@ -124,24 +124,13 @@ contract Strategy is BaseStrategy {
         // NOTE: `migrate` will automatically forward all `want` in this strategy to the new one
     }
 
-    // Override this to add all tokens/tokenized positions this contract manages
-    // on a *persistent* basis (e.g. not just for swapping back to want ephemerally)
-    // NOTE: Do *not* include `want`, already included in `sweep` below
-    //
-    // Example:
-    //
-    //    function protectedTokens() internal override view returns (address[] memory) {
-    //      address[] memory protected = new address[](3);
-    //      protected[0] = tokenA;
-    //      protected[1] = tokenB;
-    //      protected[2] = tokenC;
-    //      return protected;
-    //    }
     function protectedTokens() internal view override returns (address[] memory){
-        address[] memory protected = new address[](2);
+        address[] memory protected = new address[](5);
         protected[0] = address(cWant);
-        protected[1] = address(cBorrowed);
-        protected[2] = address(reward);
+        protected[1] = address(cSupplied);
+        protected[2] = address(borrowed);
+        protected[3] = address(reward);
+        protected[4] = address(delegatedVault);
         return protected;
     }
 
