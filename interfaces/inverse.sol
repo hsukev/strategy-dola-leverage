@@ -14,7 +14,7 @@ interface PriceOracle {
 
 interface ComptrollerInterface {
     // autogen getter
-    function oracle() external returns (PriceOracle);
+    function oracle() external view returns (PriceOracle);
 
     /*** Assets You Are In ***/
 
@@ -195,7 +195,7 @@ interface CTokenInterface {
 
     function balanceOf(address owner) external view returns (uint);
 
-    function balanceOfUnderlying(address owner) external returns (uint);
+    function balanceOfUnderlying(address owner) external view returns (uint); // changed to view
 
     function getAccountSnapshot(address account) external view returns (uint, uint, uint, uint);
 
@@ -218,6 +218,8 @@ interface CTokenInterface {
     function accrueInterest() external returns (uint);
 
     function seize(address liquidator, address borrower, uint seizeTokens) external returns (uint);
+
+    function underlying() external view returns (address);
 
 
     /*** Admin Functions ***/
