@@ -24,12 +24,12 @@ contract Strategy is BaseStrategy {
     CErc20Interface public cWant;
     CErc20Interface public cBorrowed;
     CErc20Interface public cSupplied; // private market for Yearn
+    CErc20Interface public cReward;
     IERC20 public borrowed;
     IERC20 public reward;
 
     address public inverseGovernance;
     uint256 public targetCollateralFactor;
-
 
     constructor(address _vault, address _cWant, address _cBorrowed, address _reward, address _delegatedVault) public BaseStrategy(_vault) {
         delegatedVault = VaultAPI(_delegatedVault);
@@ -48,7 +48,7 @@ contract Strategy is BaseStrategy {
         markets[1] = address(cBorrowed);
         comptroller.enterMarkets(markets);
 
-        want.safeApprove(address(cWant), uint256(-1));
+        want.safeApprove(address(cWant), uint256(- 1));
     }
 
     //
@@ -76,7 +76,7 @@ contract Strategy is BaseStrategy {
 
         if (_totalAssets > _debt) {
             uint256 _unwindAmount = _totalAssets.sub(_debt).sub(balanceOfWant());
-            unwind(_unwindAmount);
+            unwindCTokenUnderlying(_unwindAmount, cWant);
             uint256 _harvestedProfit = balanceOfWant();
 
             _debtPayment = _debtOutstanding;
@@ -139,18 +139,31 @@ contract Strategy is BaseStrategy {
     // Helpers
     //
 
-    // unwind from delegated to dola
-    function unwind(uint256 _amount) internal returns (uint256){
-        // withdraw from yVault
-        // TODO math here needs correct decimals and price conversion
-        uint256 _amountInShares = _amount.div(delegatedVault.pricePerShare());
-        uint256 _withdrawnAmount = delegatedVault.withdraw(_amountInShares, address(this));
+    // unwind from delegated to specified cToken underlying
+    // WARNING: Unsafe operation. Does not rebalance portfolio. Need to call adjustPosition()
+    function unwindCTokenUnderlying(uint256 _amountUnderlying, CErc20Interface _cToken) internal {
+        uint256 usdPerUnderlying = comptroller.oracle().getUnderlyingPrice(_cToken);
+        uint256 usdPerDelegated = comptroller.oracle().getUnderlyingPrice(cBorrowed);
+        uint256 delegatedPerVaultShare = delegatedVault.pricePerShare();
 
-        // repay borrowed
+        uint256 _amountUnderlyingInShares = _amountUnderlying.mul(usdPerUnderlying).div(usdPerDelegated).div(delegatedPerVaultShare);
+        uint256 _withdrawnAmount = delegatedVault.withdraw(_amountUnderlyingInShares, address(this));
+
+        // repay borrowed to free up collateral
         cBorrowed.repayBorrow(_withdrawnAmount);
+    }
 
-        // redeem dola back
-        return cWant.redeemUnderlying(_amount);
+    // unwind from delegated to cToken.
+    // WARNING: Unsafe operation. Does not rebalance portfolio. Need to call adjustPosition()
+    function unwindCToken(uint256 _amountCToken, CErc20Interface _cToken) internal {
+        uint256 underlyingPerCToken = _cToken.exchangeRateCurrent();
+        uint256 _amountUnderlying = _amountCToken.mul(underlyingPerCToken);
+
+        unwindCTokenUnderlying(_amountUnderlying, _cToken);
+    }
+
+    function redeemCollateral(uint256 _amount, CErc20Interface _cToken) internal {
+        _cToken.redeemUnderlying(_amount);
     }
 
     // _amountBorrowMore = overcollateralized, safe to borrow more
@@ -158,13 +171,11 @@ contract Strategy is BaseStrategy {
     function calculateBorrowAdjustment() internal returns (uint256 _amountBorrowMore, uint256 _amountRepay){
         // TODO need proper decimals
         uint256 valueBorrowed = valueOfBorrowed();
-        uint256 valueSupplied = valueOfCSupplied();
-
-        // TODO add supplied INV to valueSupplied as well
+        uint256 valueCollateral = valueOfCWant().add(valueOfCSupplied()).add(valueOfCReward());
 
         // amount of borrowed token to adjust to maintain targetCollateralFactor
         uint256 priceBorrowed = comptroller.oracle().getUnderlyingPrice(address(cBorrowed));
-        int256 delta = int256((valueSupplied.mul(targetCollateralFactor) - valueBorrowed).div(priceBorrowed));
+        int256 delta = int256((valueCollateral.mul(targetCollateralFactor) - valueBorrowed).div(priceBorrowed));
         if (delta > 0) {
             return (uint256(delta), uint256(0));
         } else {
@@ -193,6 +204,12 @@ contract Strategy is BaseStrategy {
     function valueOfCSupplied() public view returns (uint256){
         uint256 price = comptroller.oracle().getUnderlyingPrice(address(cSupplied));
         return cSupplied.balanceOfUnderlying(address(this)).mul(price);
+    }
+
+    // Value of reward tokens in USD
+    function valueOfCReward() public view returns (uint256){
+        uint256 price = comptroller.oracle().getUnderlyingPrice(address(cReward));
+        return cReward.balanceOfUnderlying(address(this)).mul(price);
     }
 
     // Value of borrowed tokens in USD
@@ -257,12 +274,12 @@ contract Strategy is BaseStrategy {
 
     function supplyCollateral(uint256 _amount) external onlyInverseGovernance {
         cSupplied.transferFrom(msg.sender, address(this), _amount);
+        adjustPosition(0);
     }
 
     function removeCollateral(uint256 _amount) external onlyInverseGovernance {
-        // TODO: calculate amount to unwind to maintain collateral ratio, should be similar to adjust position
-        // TODO: unwind from vault -> borrowed -> cWant
-
+        unwindCToken(_amount, cSupplied);
         cSupplied.transfer(msg.sender, _amount);
+        adjustPosition(0);
     }
 }
