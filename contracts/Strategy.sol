@@ -98,7 +98,7 @@ contract Strategy is BaseStrategy {
 
     function adjustPosition(uint256 _debtOutstanding) internal override {
         cWant.mint(balanceOfWant());
-        cReward.mint(balanceofReward());
+        cReward.mint(balanceOfReward());
 
         rebalance(0);
     }
@@ -163,7 +163,7 @@ contract Strategy is BaseStrategy {
     }
 
     // Rebalances supply/borrow to maintain targetCollaterFactor
-    // @param _pendingWithdrawInUsd = amount that needs to be freed up after rebalancing
+    // @param _pendingWithdrawInUsd = collateral that needs to be freed up after rebalancing
     function rebalance(uint256 _pendingWithdrawInUsd) internal {
         uint256 _usdPerBorrowed = comptroller.oracle().getUnderlyingPrice(address(cBorrowed));
         int256 _adjustmentInUsd = calculateAdjustmentInUsd(_pendingWithdrawInUsd);
@@ -195,37 +195,41 @@ contract Strategy is BaseStrategy {
     // Value of loose want in USD
     function valueOfWant() public view returns (uint256) {
         uint256 _price = comptroller.oracle().getUnderlyingPrice(address(cWant));
-        return balanceOfWant().mul(_price);
+        return balanceOfWant().mul(_price).div(ERC20(want).decimals());
     }
 
     // Value of deposited want in USD
     function valueOfCWant() public view returns (uint256){
         uint256 _price = comptroller.oracle().getUnderlyingPrice(address(cWant));
-        return cWant.balanceOfUnderlying(address(this)).mul(_price);
+        return cWant.balanceOfUnderlying(address(this)).mul(_price).div(ERC20(cWant.underlying()).decimals());
     }
 
     // Value of Inverse supplied tokens in USD
     function valueOfCSupplied() public view returns (uint256){
         uint256 _price = comptroller.oracle().getUnderlyingPrice(address(cSupplied));
-        return cSupplied.balanceOfUnderlying(address(this)).mul(_price);
+        return cSupplied.balanceOfUnderlying(address(this)).mul(_price).div(ERC20(cSupplied.underlying()).decimals());
     }
 
     // Value of reward tokens in USD
     function valueOfCReward() public view returns (uint256){
         uint256 _price = comptroller.oracle().getUnderlyingPrice(address(cReward));
-        return cReward.balanceOfUnderlying(address(this)).mul(_price);
+        return cReward.balanceOfUnderlying(address(this)).mul(_price).div(ERC20(cReward.underlying()).decimals());
     }
 
     // Value of borrowed tokens in USD
     function valueOfBorrowed() public view returns (uint256){
         uint256 _price = comptroller.oracle().getUnderlyingPrice(address(cBorrowed));
-        return borrowed.balanceOf(address(this)).mul(_price);
+        return borrowed.balanceOf(address(this)).mul(_price).div(ERC20(borrowed).decimals());
     }
 
     // Value of delegated vault deposits in USD
     function valueOfDelegated() public view returns (uint256){
         uint256 _price = comptroller.oracle().getUnderlyingPrice(address(cBorrowed));
-        delegatedVault.balanceOf(address(this)).mul(delegatedVault.pricePerShare()).mul(_price);
+        return delegatedVault.balanceOf(address(this))
+        .mul(delegatedVault.pricePerShare())
+        .mul(_price)
+        .div(delegatedVault.decimals())
+        .div(1 ether);
     }
 
     //
