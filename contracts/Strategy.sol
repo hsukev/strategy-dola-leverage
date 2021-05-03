@@ -43,10 +43,10 @@ contract Strategy is BaseStrategy {
         require(cWant.underlying() == address(want), "cWant does not match want");
         require(cBorrowed.underlying() == address(borrowed), "cBorrowed does not match delegated vault token");
 
-        address[] memory markets = new address[](2);
-        markets[0] = address(cWant);
-        markets[1] = address(cBorrowed);
-        comptroller.enterMarkets(markets);
+        address[] memory _markets = new address[](2);
+        _markets[0] = address(cWant);
+        _markets[1] = address(cBorrowed);
+        comptroller.enterMarkets(_markets);
 
         want.safeApprove(address(cWant), uint256(- 1));
     }
@@ -66,8 +66,8 @@ contract Strategy is BaseStrategy {
     }
 
     function estimatedTotalAssets() public view override returns (uint256) {
-        uint256 price = comptroller.oracle().getUnderlyingPrice(address(cWant));
-        return balanceOfWant().add(valueOfCWant()).add(valueOfDelegated()).sub(valueOfBorrowed()).div(price);
+        uint256 _price = comptroller.oracle().getUnderlyingPrice(address(cWant));
+        return balanceOfWant().add(valueOfCWant()).add(valueOfDelegated()).sub(valueOfBorrowed()).div(_price);
     }
 
     function prepareReturn(uint256 _debtOutstanding) internal override returns (uint256 _profit, uint256 _loss, uint256 _debtPayment){
@@ -76,13 +76,14 @@ contract Strategy is BaseStrategy {
 
         if (_totalAssets > _debt) {
             uint256 _unwindAmount = _totalAssets.sub(_debt).sub(balanceOfWant());
-            //            safeUnwindCTokenUnderlying(_unwindAmount, cWant);
-            uint256 _harvestedProfit = balanceOfWant();
+            // TODO instead of unwinding all the way to cToken, profits need to just unwind to eth and sell for want
+            // shallow unwind and sell function here
+            uint256 _balanceWithProfit = balanceOfWant();
 
             _debtPayment = _debtOutstanding;
             _loss = 0;
-            if (_harvestedProfit > _debtOutstanding) {
-                _profit = _harvestedProfit.sub(_debtOutstanding);
+            if (_balanceWithProfit > _debtOutstanding) {
+                _profit = _balanceWithProfit.sub(_debtOutstanding);
             } else {
                 _profit = 0;
             }
@@ -91,17 +92,18 @@ contract Strategy is BaseStrategy {
             _profit = 0;
             _debtPayment = 0;
         }
+
+        // TODO harvest reward but don't sell
     }
 
     function adjustPosition(uint256 _debtOutstanding) internal override {
-        // TODO deposit loose want to mint more supply -> increase borrowed
-        // TODO claim rewards here (INV), deposit to xINV -> increase borrowed
+        cWant.mint(balanceOfWant());
+        cReward.mint(balanceofReward());
 
         rebalance(0);
     }
 
     function liquidatePosition(uint256 _amountNeeded) internal override returns (uint256 _liquidatedAmount, uint256 _loss){
-
         uint256 totalAssets = want.balanceOf(address(this));
         if (_amountNeeded > totalAssets) {
             _liquidatedAmount = totalAssets;
@@ -156,9 +158,8 @@ contract Strategy is BaseStrategy {
     // Calculate adjustments on borrowing market to maintain targetCollateralFactor
     // @param _amountPendingWithdrawInUsd should be left out of adjustment
     function calculateAdjustmentInUsd(uint256 _amountPendingWithdrawInUsd) internal returns (int256 adjustmentUsd){
-        uint256 valueBorrowed = valueOfBorrowed();
-        uint256 valueCollateral = valueOfCWant().add(valueOfCSupplied()).add(valueOfCReward()).sub(_amountPendingWithdrawInUsd);
-        return int256(valueCollateral.mul(targetCollateralFactor) - valueBorrowed);
+        uint256 _valueCollaterals = valueOfCWant().add(valueOfCSupplied()).add(valueOfCReward()).sub(_amountPendingWithdrawInUsd);
+        return int256(_valueCollaterals.mul(targetCollateralFactor) - valueOfBorrowed());
     }
 
     // Rebalances supply/borrow to maintain targetCollaterFactor
@@ -182,46 +183,49 @@ contract Strategy is BaseStrategy {
     }
 
 
-
     // Loose want
     function balanceOfWant() public view returns (uint256) {
         return want.balanceOf(address(this));
     }
 
+    function balanceOfReward() public view returns (uint256){
+        return reward.balanceOf(address(this));
+    }
+
     // Value of loose want in USD
     function valueOfWant() public view returns (uint256) {
-        uint256 price = comptroller.oracle().getUnderlyingPrice(address(cWant));
-        return balanceOfWant().mul(price);
+        uint256 _price = comptroller.oracle().getUnderlyingPrice(address(cWant));
+        return balanceOfWant().mul(_price);
     }
 
     // Value of deposited want in USD
     function valueOfCWant() public view returns (uint256){
-        uint256 price = comptroller.oracle().getUnderlyingPrice(address(cWant));
-        return cWant.balanceOfUnderlying(address(this)).mul(price);
+        uint256 _price = comptroller.oracle().getUnderlyingPrice(address(cWant));
+        return cWant.balanceOfUnderlying(address(this)).mul(_price);
     }
 
     // Value of Inverse supplied tokens in USD
     function valueOfCSupplied() public view returns (uint256){
-        uint256 price = comptroller.oracle().getUnderlyingPrice(address(cSupplied));
-        return cSupplied.balanceOfUnderlying(address(this)).mul(price);
+        uint256 _price = comptroller.oracle().getUnderlyingPrice(address(cSupplied));
+        return cSupplied.balanceOfUnderlying(address(this)).mul(_price);
     }
 
     // Value of reward tokens in USD
     function valueOfCReward() public view returns (uint256){
-        uint256 price = comptroller.oracle().getUnderlyingPrice(address(cReward));
-        return cReward.balanceOfUnderlying(address(this)).mul(price);
+        uint256 _price = comptroller.oracle().getUnderlyingPrice(address(cReward));
+        return cReward.balanceOfUnderlying(address(this)).mul(_price);
     }
 
     // Value of borrowed tokens in USD
     function valueOfBorrowed() public view returns (uint256){
-        uint256 price = comptroller.oracle().getUnderlyingPrice(address(cBorrowed));
-        return borrowed.balanceOf(address(this)).mul(price);
+        uint256 _price = comptroller.oracle().getUnderlyingPrice(address(cBorrowed));
+        return borrowed.balanceOf(address(this)).mul(_price);
     }
 
     // Value of delegated vault deposits in USD
     function valueOfDelegated() public view returns (uint256){
-        uint256 price = comptroller.oracle().getUnderlyingPrice(address(cBorrowed));
-        delegatedVault.balanceOf(address(this)).mul(delegatedVault.pricePerShare()).mul(price);
+        uint256 _price = comptroller.oracle().getUnderlyingPrice(address(cBorrowed));
+        delegatedVault.balanceOf(address(this)).mul(delegatedVault.pricePerShare()).mul(_price);
     }
 
     //
@@ -237,9 +241,9 @@ contract Strategy is BaseStrategy {
         comptroller.exitMarket(address(cBorrowed));
         cBorrowed = CErc20Interface(_address);
 
-        address[] memory markets = new address[](1);
-        markets[0] = _address;
-        comptroller.enterMarkets(markets);
+        address[] memory _markets = new address[](1);
+        _markets[0] = _address;
+        comptroller.enterMarkets(_markets);
     }
 
     // TODO: do we want this felxibility?
@@ -248,11 +252,11 @@ contract Strategy is BaseStrategy {
     }
 
     function setTargetCollateralFactor(uint256 _target) external onlyAuthorized {
-        (, uint256 safeCollateralFactor,) = comptroller.markets(address(cWant));
-        require(_target > safeCollateralFactor, "target collateral factor too low");
+        (, uint256 _safeCollateralFactor,) = comptroller.markets(address(cWant));
+        require(_target > _safeCollateralFactor, "target collateral factor too low");
 
         targetCollateralFactor = _target;
-        adjustPosition(0);
+        rebalance(0);
     }
 
     function setInverseGovernance(address _inverseGovernance) external onlyGovernance {
@@ -267,9 +271,9 @@ contract Strategy is BaseStrategy {
         comptroller.exitMarket(address(cSupplied));
         cSupplied = CErc20Interface(address(_address));
 
-        address[] memory markets = new address[](1);
-        markets[0] = _address;
-        comptroller.enterMarkets(markets);
+        address[] memory _markets = new address[](1);
+        _markets[0] = _address;
+        comptroller.enterMarkets(_markets);
     }
 
     function supplyCollateral(uint256 _amount) external onlyInverseGovernance {
