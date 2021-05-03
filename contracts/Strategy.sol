@@ -30,6 +30,7 @@ contract Strategy is BaseStrategy {
 
     address public inverseGovernance;
     uint256 public targetCollateralFactor;
+    uint256 public rewardEscrowPeriod = 14 days; // 14 days in seconds
 
     constructor(address _vault, address _cWant, address _cBorrowed, address _reward, address _delegatedVault) public BaseStrategy(_vault) {
         delegatedVault = VaultAPI(_delegatedVault);
@@ -62,9 +63,11 @@ contract Strategy is BaseStrategy {
 
     // account for this when depositing to another vault
     function delegatedAssets() external override view returns (uint256) {
-        return delegatedVault.balanceOf(address(this)).mul(delegatedVault.pricePerShare());
+        // don't include leveraged
+        return 0;
     }
 
+    // only include user deposited assets, exclude any leveraging
     function estimatedTotalAssets() public view override returns (uint256) {
         uint256 _price = comptroller.oracle().getUnderlyingPrice(address(cWant));
         return balanceOfWant().add(valueOfCWant()).add(valueOfDelegated()).sub(valueOfBorrowed()).div(_price);
@@ -139,7 +142,7 @@ contract Strategy is BaseStrategy {
     // @param redeem: True will redeem to cToken.underlying. False will remain as cToken
     function safeUnwindCTokenUnderlying(uint256 _amountUnderlying, CErc20Interface _cToken, bool redeem) internal {
         uint256 _usdPerUnderlying = comptroller.oracle().getUnderlyingPrice(address(_cToken));
-        uint256 _amountUnderlyingInUsd = _amountUnderlying.mul(_usdPerUnderlying);
+        uint256 _amountUnderlyingInUsd = _amountUnderlying.mul(_usdPerUnderlying).div(decimals(_cToken));
 
         rebalance(_amountUnderlyingInUsd);
 
@@ -151,7 +154,7 @@ contract Strategy is BaseStrategy {
     // free up _amountCToken worth of borrowed while maintaining targetCollateralRatio
     function safeUnwindCToken(uint256 _amountCToken, CErc20Interface _cToken) internal {
         uint256 _underlyingPerCToken = _cToken.exchangeRateCurrent();
-        uint256 _amountUnderlying = _amountCToken.mul(_underlyingPerCToken);
+        uint256 _amountUnderlying = _amountCToken.mul(_underlyingPerCToken).div(1 ** 16);
         safeUnwindCTokenUnderlying(_amountUnderlying, _cToken, false);
     }
 
@@ -159,7 +162,7 @@ contract Strategy is BaseStrategy {
     // @param _amountPendingWithdrawInUsd should be left out of adjustment
     function calculateAdjustmentInUsd(uint256 _amountPendingWithdrawInUsd) internal returns (int256 adjustmentUsd){
         uint256 _valueCollaterals = valueOfCWant().add(valueOfCSupplied()).add(valueOfCReward()).sub(_amountPendingWithdrawInUsd);
-        return int256(_valueCollaterals.mul(targetCollateralFactor) - valueOfBorrowed());
+        return int256(_valueCollaterals.mul(targetCollateralFactor).div(1 ether) - valueOfBorrowed());
     }
 
     // Rebalances supply/borrow to maintain targetCollaterFactor
@@ -170,18 +173,17 @@ contract Strategy is BaseStrategy {
 
         if (_adjustmentInUsd > 0) {
             // overcollateralized, can borrow more
-            uint256 _adjustmentInBorrowed = uint256(_adjustmentInUsd).div(_usdPerBorrowed);
+            uint256 _adjustmentInBorrowed = uint256(_adjustmentInUsd).mul(decimals(borrowed).div(_usdPerBorrowed));
             uint _actualBorrowed = cBorrowed.borrow(_adjustmentInBorrowed);
             delegatedVault.deposit(_actualBorrowed);
         } else {
             // undercollateralized, must unwind and repay to free up collateral
             uint256 _borrowedPerVaultShare = delegatedVault.pricePerShare();
-            uint256 _adjustmentInShares = uint256(- _adjustmentInUsd).div(_usdPerBorrowed).div(_borrowedPerVaultShare);
+            uint256 _adjustmentInShares = uint256(- _adjustmentInUsd).mul(decimals(borrowed)).div(_usdPerBorrowed).mul(delegatedVault.decimals()).div(_borrowedPerVaultShare);
             uint256 _amountBorrowedWithdrawn = delegatedVault.withdraw(_adjustmentInShares);
             cBorrowed.repayBorrow(_amountBorrowedWithdrawn);
         }
     }
-
 
     // Loose want
     function balanceOfWant() public view returns (uint256) {
@@ -195,31 +197,35 @@ contract Strategy is BaseStrategy {
     // Value of loose want in USD
     function valueOfWant() public view returns (uint256) {
         uint256 _price = comptroller.oracle().getUnderlyingPrice(address(cWant));
-        return balanceOfWant().mul(_price).div(ERC20(want).decimals());
+        return balanceOfWant().mul(_price).div(decimals(want));
     }
 
     // Value of deposited want in USD
     function valueOfCWant() public view returns (uint256){
         uint256 _price = comptroller.oracle().getUnderlyingPrice(address(cWant));
-        return cWant.balanceOfUnderlying(address(this)).mul(_price).div(ERC20(cWant.underlying()).decimals());
+        return cWant.balanceOfUnderlying(address(this)).mul(_price).div(decimalsUnderlying(cWant));
     }
 
     // Value of Inverse supplied tokens in USD
     function valueOfCSupplied() public view returns (uint256){
         uint256 _price = comptroller.oracle().getUnderlyingPrice(address(cSupplied));
-        return cSupplied.balanceOfUnderlying(address(this)).mul(_price).div(ERC20(cSupplied.underlying()).decimals());
+        return cSupplied.balanceOfUnderlying(address(this)).mul(_price).div(decimalsUnderlying(cSupplied));
     }
 
     // Value of reward tokens in USD
     function valueOfCReward() public view returns (uint256){
         uint256 _price = comptroller.oracle().getUnderlyingPrice(address(cReward));
-        return cReward.balanceOfUnderlying(address(this)).mul(_price).div(ERC20(cReward.underlying()).decimals());
+        return cReward.balanceOfUnderlying(address(this)).mul(_price).div(decimalsUnderlying(cReward));
+    }
+
+    function valueOfTotalCollateral() public view returns (uint256){
+        return valueOfCWant().add(valueOfCSupplied).add(valueOfCReward);
     }
 
     // Value of borrowed tokens in USD
     function valueOfBorrowed() public view returns (uint256){
         uint256 _price = comptroller.oracle().getUnderlyingPrice(address(cBorrowed));
-        return cBorrowed.borrowBalanceCurrent(address(this)).mul(_price).div(ERC20(borrowed).decimals());
+        return cBorrowed.borrowBalanceCurrent(address(this)).mul(_price).div(decimals(borrowed));
     }
 
     // Value of delegated vault deposits in USD
@@ -229,8 +235,21 @@ contract Strategy is BaseStrategy {
         .mul(delegatedVault.pricePerShare())
         .mul(_price)
         .div(delegatedVault.decimals())
-        .div(1 ether);
+        .div(decimals(borrowed));
     }
+
+    function decimals(CErc20Interface cToken) returns (uint256){
+        return cToken.decimals();
+    }
+
+    function decimalsUnderlying(CErc20Interface cToken) returns (uint256){
+        return ERC20(cToken.underlying()).decimals();
+    }
+
+    function decimals(IERC20 cToken) returns (uint256){
+        return ERC20(cToken).decimals();
+    }
+
 
     //
     // Setters
@@ -255,11 +274,11 @@ contract Strategy is BaseStrategy {
         reward = IERC20(_reward);
     }
 
-    function setTargetCollateralFactor(uint256 _target) external onlyAuthorized {
+    function setTargetCollateralFactor(uint256 _targetMantissa) external onlyAuthorized {
         (, uint256 _safeCollateralFactor,) = comptroller.markets(address(cWant));
-        require(_target > _safeCollateralFactor, "target collateral factor too low");
+        require(_targetMantissa > _safeCollateralFactor, "target collateral factor too high!!");
 
-        targetCollateralFactor = _target;
+        targetCollateralFactor = _targetMantissa;
         rebalance(0);
     }
 
