@@ -219,7 +219,7 @@ contract Strategy is BaseStrategy {
     // Value of borrowed tokens in USD
     function valueOfBorrowed() public view returns (uint256){
         uint256 _price = comptroller.oracle().getUnderlyingPrice(address(cBorrowed));
-        return borrowed.balanceOf(address(this)).mul(_price).div(ERC20(borrowed).decimals());
+        return cBorrowed.borrowBalanceCurrent(address(this)).mul(_price).div(ERC20(borrowed).decimals());
     }
 
     // Value of delegated vault deposits in USD

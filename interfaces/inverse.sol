@@ -184,6 +184,7 @@ interface CTokenInterface {
 
 
     /*** User Interface ***/
+    function decimals() external returns (uint8);
 
     function transfer(address dst, uint amount) external returns (bool);
 
