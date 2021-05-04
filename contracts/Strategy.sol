@@ -103,7 +103,8 @@ contract Strategy is BaseStrategy {
             _debtPayment = 0;
         }
 
-        // TODO harvest reward but don't sell
+        // just claim but don't sell
+        comptroller.claimComp(address(this));
     }
 
     function adjustPosition(uint256 _debtOutstanding) internal override {
@@ -157,11 +158,6 @@ contract Strategy is BaseStrategy {
         }
     }
 
-    // free up _amountCToken worth of borrowed while maintaining targetCollateralRatio
-    function safeUnwindCToken(uint256 _amountCToken, CErc20Interface _cToken) internal {
-        safeUnwindCTokenUnderlying(cTokenToUnderlying(_amountCToken, _cToken), _cToken, false);
-    }
-
     // Calculate adjustments on borrowing market to maintain targetCollateralFactor
     // @param _amountPendingWithdrawInUsd should be left out of adjustment
     function calculateAdjustmentInUsd(uint256 _amountPendingWithdrawInUsd) internal returns (int256 adjustmentUsd){
@@ -171,7 +167,7 @@ contract Strategy is BaseStrategy {
 
     // Rebalances supply/borrow to maintain targetCollaterFactor
     // @param _pendingWithdrawInUsd = collateral that needs to be freed up after rebalancing
-    function rebalance(uint256 _pendingWithdrawInUsd) internal {
+    function rebalance(uint256 _pendingWithdrawInUsd) public onlyKeepers {
         int256 _adjustmentInUsd = calculateAdjustmentInUsd(_pendingWithdrawInUsd);
 
         if (_adjustmentInUsd > 0) {
@@ -188,6 +184,7 @@ contract Strategy is BaseStrategy {
         }
     }
 
+    // sell profits earned from delegated vault
     function sellProfits(uint256 _amountInWant) internal {
         uint256 _amountInBorrowed = underlyingToUnderlying(_amountInWant, cWant, cBorrowed);
         uint256 _amountInShares = borrowedToShares(_amountInBorrowed);
@@ -197,6 +194,12 @@ contract Strategy is BaseStrategy {
         router.swapExactTokensForTokens(_actualWithdrawn, uint256(0), path, address(this), now);
     }
 
+    // unwind reward so it can be delegated for voting or sent to yearn gov
+    function delegateRewardsTo(address _address) external onlyGovernance {
+        safeUnwindCTokenUnderlying(cReward.balanceOfUnderlying(address(this)), cReward, true);
+        balanceOfReward(); // now
+        // TODO delegate or transfer? Not sure how vote delgation works
+    }
 
     // Loose want
     function balanceOfWant() public view returns (uint256) {
@@ -319,7 +322,7 @@ contract Strategy is BaseStrategy {
     }
 
     function removeCollateral(uint256 _amount) external onlyInverseGovernance {
-        safeUnwindCToken(_amount, cSupplied);
+        safeUnwindCTokenUnderlying(cTokenToUnderlying(_amount, cSupplied), cSupplied, false);
         cSupplied.transfer(msg.sender, _amount);
     }
 }

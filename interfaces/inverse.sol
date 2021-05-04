@@ -90,6 +90,8 @@ interface ComptrollerInterface {
         uint repayAmount) external view returns (uint, uint);
 
     function markets(address cToken) external view returns (bool isListed, uint256 collatFactorMantissa, bool isComped);
+
+    function claimComp(address holder) external;
 }
 
 interface CTokenStorage {
@@ -222,7 +224,6 @@ interface CTokenInterface {
 
     function underlying() external view returns (address);
 
-
     /*** Admin Functions ***/
 
     function _setPendingAdmin(address payable newPendingAdmin) external returns (uint);
@@ -236,6 +237,8 @@ interface CTokenInterface {
     function _reduceReserves(uint reduceAmount) external returns (uint);
 
     function _setInterestRateModel(InterestRateModel newInterestRateModel) external returns (uint);
+
+
 }
 
 interface CErc20Interface is CTokenInterface {
