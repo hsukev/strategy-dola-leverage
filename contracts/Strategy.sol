@@ -70,13 +70,14 @@ contract Strategy is BaseStrategy {
 
     // account for this when depositing to another vault
     function delegatedAssets() external override view returns (uint256) {
-        // don't include leveraged
+        // TODO don't include all the leveraged stuff, only include user assets
         return 0;
     }
 
     // only include user deposited assets, exclude any leveraging
     function estimatedTotalAssets() public view override returns (uint256) {
         uint256 _price = comptroller.oracle().getUnderlyingPrice(address(cWant));
+        // TODO incorrect calculation here
         return balanceOfWant().add(valueOfCWant()).add(valueOfDelegated()).sub(valueOfBorrowed()).div(_price);
     }
 
@@ -127,17 +128,23 @@ contract Strategy is BaseStrategy {
     }
 
     function prepareMigration(address _newStrategy) internal override {
-        // TODO: Transfer any non-`want` tokens to the new strategy
-        // NOTE: `migrate` will automatically forward all `want` in this strategy to the new one
+        reward.transfer(_newStrategy, balanceOfReward());
+        borrowed.transfer(_newStrategy, borrowed.balanceOf(address(this)));
+        delegatedVault.transfer(_newStrategy, delegatedVault.balanceOf(address(this)));
+
+        cWant.transfer(_newStrategy, cWant.balanceOf(address(this)));
+        cReward.transfer(_newStrategy, cReward.balanceOf(address(this)));
+        cSupplied.transfer(_newStrategy, cSupplied.balanceOf(address(this)));
     }
 
     function protectedTokens() internal view override returns (address[] memory){
         address[] memory protected = new address[](5);
-        protected[0] = address(cWant);
-        protected[1] = address(cSupplied);
-        protected[2] = address(borrowed);
-        protected[3] = address(reward);
-        protected[4] = address(delegatedVault);
+        protected[0] = address(reward);
+        protected[1] = address(borrowed);
+        protected[2] = address(delegatedVault);
+        protected[3] = address(cWant);
+        protected[4] = address(cReward);
+        protected[5] = address(cSupplied);
         return protected;
     }
 
@@ -149,7 +156,7 @@ contract Strategy is BaseStrategy {
     // free up _amountUnderlying worth of borrowed while maintaining targetCollateralRatio
     // @param redeem: True will redeem to cToken.underlying. False will remain as cToken
     function safeUnwindCTokenUnderlying(uint256 _amountUnderlying, CErc20Interface _cToken, bool redeem) internal {
-        uint256 _amountUnderlyingInUsd = underlyingToUsd(_amountUnderlying, _cToken);
+        uint256 _amountUnderlyingInUsd = estimateAmountUnderlyingInUsd(_amountUnderlying, _cToken);
 
         rebalance(_amountUnderlyingInUsd);
 
@@ -172,13 +179,13 @@ contract Strategy is BaseStrategy {
 
         if (_adjustmentInUsd > 0) {
             // overcollateralized, can borrow more
-            uint256 _adjustmentInBorrowed = usdToUnderlying(uint256(_adjustmentInUsd), cBorrowed);
+            uint256 _adjustmentInBorrowed = estimateAmountUsdInUnderlying(uint256(_adjustmentInUsd), cBorrowed);
             uint _actualBorrowed = cBorrowed.borrow(_adjustmentInBorrowed);
             delegatedVault.deposit(_actualBorrowed);
         } else {
             // undercollateralized, must unwind and repay to free up collateral
-            uint256 _adjustmentInBorrowed = usdToUnderlying(uint256(- _adjustmentInUsd), cBorrowed);
-            uint256 _adjustmentInShares = borrowedToShares(_adjustmentInBorrowed);
+            uint256 _adjustmentInBorrowed = estimateAmountUsdInUnderlying(uint256(- _adjustmentInUsd), cBorrowed);
+            uint256 _adjustmentInShares = estimateAmountBorrowedInShares(_adjustmentInBorrowed);
             uint256 _amountBorrowedWithdrawn = delegatedVault.withdraw(_adjustmentInShares);
             cBorrowed.repayBorrow(_amountBorrowedWithdrawn);
         }
@@ -186,19 +193,12 @@ contract Strategy is BaseStrategy {
 
     // sell profits earned from delegated vault
     function sellProfits(uint256 _amountInWant) internal {
-        uint256 _amountInBorrowed = underlyingToUnderlying(_amountInWant, cWant, cBorrowed);
-        uint256 _amountInShares = borrowedToShares(_amountInBorrowed);
+        uint256 _amountInBorrowed = estimateAmountUnderlyingInUnderlying(_amountInWant, cWant, cBorrowed);
+        uint256 _amountInShares = estimateAmountBorrowedInShares(_amountInBorrowed);
         uint256 _actualWithdrawn = delegatedVault.withdraw(_amountInShares);
 
         // sell to want
         router.swapExactTokensForTokens(_actualWithdrawn, uint256(0), path, address(this), now);
-    }
-
-    // unwind reward so it can be delegated for voting or sent to yearn gov
-    function delegateRewardsTo(address _address) external onlyGovernance {
-        safeUnwindCTokenUnderlying(cReward.balanceOfUnderlying(address(this)), cReward, true);
-        balanceOfReward(); // now
-        // TODO delegate or transfer? Not sure how vote delgation works
     }
 
     // Loose want
@@ -212,17 +212,17 @@ contract Strategy is BaseStrategy {
 
     // Value of deposited want in USD
     function valueOfCWant() public view returns (uint256){
-        return underlyingToUsd(cWant.balanceOfUnderlying(address(this)), cWant);
+        return estimateAmountUnderlyingInUsd(cWant.balanceOfUnderlying(address(this)), cWant);
     }
 
     // Value of Inverse supplied tokens in USD
     function valueOfCSupplied() public view returns (uint256){
-        return underlyingToUsd(cSupplied.balanceOfUnderlying(address(this)), cSupplied);
+        return estimateAmountUnderlyingInUsd(cSupplied.balanceOfUnderlying(address(this)), cSupplied);
     }
 
     // Value of reward tokens in USD
     function valueOfCReward() public view returns (uint256){
-        return underlyingToUsd(cReward.balanceOfUnderlying(address(this)), cReward);
+        return estimateAmountUnderlyingInUsd(cReward.balanceOfUnderlying(address(this)), cReward);
     }
 
     function valueOfTotalCollateral() public view returns (uint256){
@@ -231,37 +231,47 @@ contract Strategy is BaseStrategy {
 
     // Value of borrowed tokens in USD
     function valueOfBorrowed() public view returns (uint256){
-        return underlyingToUsd(cBorrowed.borrowBalanceCurrent(address(this)), cBorrowed);
+        return estimateAmountUnderlyingInUsd(cBorrowed.borrowBalanceCurrent(address(this)), cBorrowed);
     }
 
     // Value of delegated vault deposits in USD
     function valueOfDelegated() public view returns (uint256){
         uint256 _amountInBorrowed = delegatedVault.balanceOf(address(this)).mul(delegatedVault.pricePerShare()).div(delegatedVault.decimals());
-        return underlyingToUsd(_amountInBorrowed, cBorrowed);
+        return estimateAmountUnderlyingInUsd(_amountInBorrowed, cBorrowed);
     }
 
-    function underlyingToUnderlying(uint256 _amount, CErc20Interface _fromCToken, CErc20Interface _toCToken) public view returns (uint256){
-        return usdToUnderlying(underlyingToUsd(_amount, _fromCToken), _toCToken);
+    function estimateAmountUnderlyingInUnderlying(uint256 _amount, CErc20Interface _fromCToken, CErc20Interface _toCToken) public view returns (uint256){
+        return estimateAmountUsdInUnderlying(estimateAmountUnderlyingInUsd(_amount, _fromCToken), _toCToken);
     }
 
-    function underlyingToUsd(uint256 _amountUnderlying, CErc20Interface cToken) public view returns (uint256){
+    function estimateAmountUnderlyingInUsd(uint256 _amountUnderlying, CErc20Interface cToken) public view returns (uint256){
         uint256 _usdPerUnderlying = comptroller.oracle().getUnderlyingPrice(address(cToken));
         return _amountUnderlying.mul(_usdPerUnderlying).div(1 ether);
     }
 
-    function usdToUnderlying(uint256 _amountInUsd, CErc20Interface cToken) public view returns (uint256){
+    function estimateAmountUsdInUnderlying(uint256 _amountInUsd, CErc20Interface cToken) public view returns (uint256){
         uint256 _usdPerUnderlying = comptroller.oracle().getUnderlyingPrice(address(cReward));
         return _amountInUsd.mul(1 ether).div(_usdPerUnderlying);
     }
 
-    function borrowedToShares(uint256 _amountBorrowed) public view returns (uint256){
+    function estimateAmountBorrowedInShares(uint256 _amountBorrowed) public view returns (uint256){
         uint256 _borrowedPerShare = delegatedVault.pricePerShare();
         return _amountBorrowed.mul(delegatedVault.decimals()).div(_borrowedPerShare);
     }
 
-    function cTokenToUnderlying(uint256 _amountCToken, CErc20Interface cToken) public view returns (uint256){
+    function estimateAmountCTokenInUnderlying(uint256 _amountCToken, CErc20Interface cToken) public view returns (uint256){
         uint256 _underlyingPerCToken = cToken.exchangeRateCurrent();
         return _amountCToken.mul(_underlyingPerCToken).div(1 ether);
+    }
+
+    // unwind reward so it can be delegated for voting or sent to yearn gov
+    function delegateRewardsTo(address _address) external onlyGovernance {
+        // TODO: fix to correct start of escrow
+        require(now.sub(0) > rewardEscrowPeriod, "Rewards are still in escrow!");
+
+        safeUnwindCTokenUnderlying(cReward.balanceOfUnderlying(address(this)), cReward, true);
+        balanceOfReward();
+        // TODO delegate or transfer? Not sure how vote delgation works
     }
 
 
@@ -283,7 +293,6 @@ contract Strategy is BaseStrategy {
         comptroller.enterMarkets(_markets);
     }
 
-    // TODO: do we want this felxibility?
     function setRewardToken(address _reward) external onlyAuthorized {
         reward = IERC20(_reward);
     }
@@ -322,7 +331,7 @@ contract Strategy is BaseStrategy {
     }
 
     function removeCollateral(uint256 _amount) external onlyInverseGovernance {
-        safeUnwindCTokenUnderlying(cTokenToUnderlying(_amount, cSupplied), cSupplied, false);
+        safeUnwindCTokenUnderlying(estimateAmountCTokenInUnderlying(_amount, cSupplied), cSupplied, false);
         cSupplied.transfer(msg.sender, _amount);
     }
 }
