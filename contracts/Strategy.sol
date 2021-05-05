@@ -29,12 +29,16 @@ contract Strategy is BaseStrategy {
     CErc20Interface public cReward;
     IERC20 public borrowed;
     IERC20 public reward;
+    IERC20 constant public weth = IERC20(address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2));
 
     address[] public path;
+    address[] public wethWantPath;
     address public inverseGovernance;
     uint256 public targetCollateralFactor;
+    uint256 public collateralTolerance;
     uint256 public blocksToLiquidationDangerZone = uint256(7 days) / 13; // assuming 13 second block times
     uint256 public rewardEscrowPeriod = 14 days;
+
 
     constructor(address _vault, address _cWant, address _cBorrowed, address _reward, address _delegatedVault) public BaseStrategy(_vault) {
         delegatedVault = VaultAPI(_delegatedVault);
@@ -50,11 +54,14 @@ contract Strategy is BaseStrategy {
         require(cBorrowed.underlying() == address(borrowed), "cBorrowed does not match delegated vault token");
 
         path = [delegatedVault.token(), address(want)];
+        wethWantPath = [address(weth), address(want)];
 
         address[] memory _markets = new address[](2);
         _markets[0] = address(cWant);
         _markets[1] = address(cBorrowed);
         comptroller.enterMarkets(_markets);
+
+        collateralTolerance = 0.01 ether;
 
         want.safeApprove(address(cWant), uint256(- 1));
     }
@@ -75,7 +82,15 @@ contract Strategy is BaseStrategy {
     }
 
     function estimatedTotalAssets() public view override returns (uint256) {
-        return balanceOfWant().add(estimateAmountUsdInUnderlying(valueOfCWant()).add(valueOfDelegated()).sub(valueOfBorrowed()), cWant);
+        return balanceOfWant().add(estimateAmountUsdInUnderlying(valueOfCWant().add(valueOfDelegated()).sub(valueOfBorrowed()), cWant));
+    }
+
+    function ethToWant(uint256 _amtInWei) public view returns (uint256){
+        uint256 amountOut = 0;
+        if (_amtInWei > 0) {
+            amountOut = router.getAmountsOut(_amtInWei, wethWantPath)[1];
+        }
+        return amountOut;
     }
 
     function prepareReturn(uint256 _debtOutstanding) internal override returns (uint256 _profit, uint256 _loss, uint256 _debtPayment){
@@ -125,12 +140,12 @@ contract Strategy is BaseStrategy {
     }
 
     function tendTrigger(uint256 callCostInWei) public override virtual view returns (bool) {
-        // uint256 callCost = ethToWant(callCostInWei);
-        if (harvestTrigger(callCostInWei)) {
+        if (harvestTrigger(ethToWant(callCostInWei))) {
             return false;
         }
-
-        return blocksUntilLiquidation() <= blocksToLiquidationDangerZone;
+        uint256 currentCF = currentCollateralFactor();
+        bool isWithinCFRange = targetCollateralFactor.sub(collateralTolerance) < currentCF && currentCF < targetCollateralFactor.add(collateralTolerance);
+        return blocksUntilLiquidation() <= blocksToLiquidationDangerZone && !isWithinCFRange;
     }
 
     function prepareMigration(address _newStrategy) internal override {
@@ -303,6 +318,11 @@ contract Strategy is BaseStrategy {
         return _amountCToken.mul(_underlyingPerCToken).div(1 ether);
     }
 
+    // mantissa
+    function currentCollateralFactor() internal view returns (uint256){
+        return valueOfBorrowed().mul(1 ether).div(valueOfTotalCollateral());
+    }
+
     // unwind reward so it can be delegated for voting or sent to yearn gov
     function delegateRewardsTo(address _address) external onlyGovernance {
         // TODO: fix to correct start of escrow
@@ -338,7 +358,8 @@ contract Strategy is BaseStrategy {
 
     function setTargetCollateralFactor(uint256 _targetMantissa) external onlyAuthorized {
         (, uint256 _safeCollateralFactor,) = comptroller.markets(address(cWant));
-        require(_targetMantissa > _safeCollateralFactor, "target collateral factor too high!!");
+        require(_targetMantissa.add(collateralTolerance) > _safeCollateralFactor, "target collateral factor too high!!");
+        require(_targetMantissa > collateralTolerance, "target collateral factor too low!!");
 
         targetCollateralFactor = _targetMantissa;
         rebalance(0);
@@ -352,6 +373,9 @@ contract Strategy is BaseStrategy {
         router = IUniswapV2Router02(address(_router));
     }
 
+    function setCollateralTolerance(uint256 _toleranceMantissa) external onlyGovernance {
+        collateralTolerance = _toleranceMantissa;
+    }
     //
     // For Inverse Finance
     //
