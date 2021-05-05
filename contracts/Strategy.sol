@@ -127,6 +127,11 @@ contract Strategy is BaseStrategy {
         safeUnwindCTokenUnderlying(_liquidatedAmount, cWant, true);
     }
 
+    function tendTrigger(uint256 callCostInWei) public virtual view returns (bool) {
+        // uint256 callCost = ethToWant(callCostInWei);
+        return calculateAdjustmentInUsd(0) != 0;
+    }
+
     function prepareMigration(address _newStrategy) internal override {
         reward.transfer(_newStrategy, balanceOfReward());
         borrowed.transfer(_newStrategy, borrowed.balanceOf(address(this)));
