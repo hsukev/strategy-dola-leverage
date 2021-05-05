@@ -33,6 +33,7 @@ contract Strategy is BaseStrategy {
     address[] public path;
     address public inverseGovernance;
     uint256 public targetCollateralFactor;
+    uint256 public blocksToLiquidationDangerZone = uint256(7 days) / 13; // assuming 13 second block times
     uint256 public rewardEscrowPeriod = 14 days;
 
     constructor(address _vault, address _cWant, address _cBorrowed, address _reward, address _delegatedVault) public BaseStrategy(_vault) {
@@ -127,9 +128,13 @@ contract Strategy is BaseStrategy {
         safeUnwindCTokenUnderlying(_liquidatedAmount, cWant, true);
     }
 
-    function tendTrigger(uint256 callCostInWei) public virtual view returns (bool) {
+    function tendTrigger(uint256 callCostInWei) public override virtual view returns (bool) {
         // uint256 callCost = ethToWant(callCostInWei);
-        return calculateAdjustmentInUsd(0) != 0;
+        if (harvestTrigger(callCostInWei)) {
+            return false;
+        }
+
+        return blocksUntilLiquidation() <= blocksToLiquidationDangerZone;
     }
 
     function prepareMigration(address _newStrategy) internal override {
@@ -157,6 +162,39 @@ contract Strategy is BaseStrategy {
     //
     // Helpers
     //
+
+    // calculate how long until assets can become liquidated based on:
+    //   - supply rate of the collateral tokens: want, supplied, and reward
+    //   - the borrow rate of the borrowed token
+    //   - required collateral factor of the borrowed token
+    // ((deposits*colateralThreshold - borrows) / (borrows*borrowrate - deposits*colateralThreshold*interestrate));
+    function blocksUntilLiquidation() public view returns (uint256) {
+        (, uint256 collateralFactorMantissa, ) = comptroller.markets(address(cBorrowed));
+
+        uint256 supplyRate1 = cWant.supplyRatePerBlock();
+        uint256 collateralisedDeposit1 = valueOfCWant().mul(collateralFactorMantissa).div(1e18);
+
+        uint256 supplyRate2 = cSupplied.supplyRatePerBlock();
+        uint256 collateralisedDeposit2 = valueOfCSupplied().mul(collateralFactorMantissa).div(1e18);
+        
+        uint256 supplyRate3 = cReward.supplyRatePerBlock();
+        uint256 collateralisedDeposit3 = valueOfCReward().mul(collateralFactorMantissa).div(1e18);
+
+        uint256 borrowBalance = valueOfBorrowed();
+        uint256 borrrowRate = cBorrowed.borrowRatePerBlock();
+
+        uint256 denom1 = borrowBalance.mul(borrrowRate);
+        uint256 denom2 = collateralisedDeposit1.mul(supplyRate1).add(collateralisedDeposit2.mul(supplyRate2)).add(collateralisedDeposit3.mul(supplyRate3));
+
+        if (denom2 >= denom1) {
+            return uint256(-1);
+        } else {
+            uint256 numer = collateralisedDeposit1.add(collateralisedDeposit2).add(collateralisedDeposit3).sub(borrowBalance);
+            uint256 denom = denom1 - denom2;
+            //minus 1 for this block
+            return numer.mul(1e18).div(denom);
+        }
+    }
 
     // free up _amountUnderlying worth of borrowed while maintaining targetCollateralRatio
     // @param redeem: True will redeem to cToken.underlying. False will remain as cToken
@@ -323,6 +361,8 @@ contract Strategy is BaseStrategy {
     //
 
     function setCSupplied(address _address) external onlyInverseGovernance {
+        require(_address != address(cWant), "supplied market cannot be same as want");
+
         comptroller.exitMarket(address(cSupplied));
         cSupplied = CErc20Interface(address(_address));
 
