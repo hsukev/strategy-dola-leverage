@@ -159,7 +159,7 @@ contract Strategy is BaseStrategy {
     }
 
     function protectedTokens() internal view override returns (address[] memory){
-        address[] memory protected = new address[](5);
+        address[] memory protected = new address[](6);
         protected[0] = address(reward);
         protected[1] = address(borrowed);
         protected[2] = address(delegatedVault);
