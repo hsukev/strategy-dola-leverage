@@ -69,17 +69,13 @@ contract Strategy is BaseStrategy {
         // return string(abi.encodePacked("StrategyInverse", IERC20Metadata(address(want)).symbol(), "Leverage"));
     }
 
-    // account for this when depositing to another vault
+    // Delegated assets in want
     function delegatedAssets() external override view returns (uint256) {
-        // TODO don't include all the leveraged stuff, only include user assets
-        return 0;
+        return estimateAmountUsdInUnderlying(valueOfDelegated(), cWant);
     }
 
-    // only include user deposited assets, exclude any leveraging
     function estimatedTotalAssets() public view override returns (uint256) {
-        uint256 _price = comptroller.oracle().getUnderlyingPrice(address(cWant));
-        // TODO incorrect calculation here
-        return balanceOfWant().add(valueOfCWant()).add(valueOfDelegated()).sub(valueOfBorrowed()).div(_price);
+        return balanceOfWant().add(estimateAmountUsdInUnderlying(valueOfCWant()).add(valueOfDelegated()).sub(valueOfBorrowed()), cWant);
     }
 
     function prepareReturn(uint256 _debtOutstanding) internal override returns (uint256 _profit, uint256 _loss, uint256 _debtPayment){
@@ -169,14 +165,14 @@ contract Strategy is BaseStrategy {
     //   - required collateral factor of the borrowed token
     // ((deposits*colateralThreshold - borrows) / (borrows*borrowrate - deposits*colateralThreshold*interestrate));
     function blocksUntilLiquidation() public view returns (uint256) {
-        (, uint256 collateralFactorMantissa, ) = comptroller.markets(address(cBorrowed));
+        (, uint256 collateralFactorMantissa,) = comptroller.markets(address(cBorrowed));
 
         uint256 supplyRate1 = cWant.supplyRatePerBlock();
         uint256 collateralisedDeposit1 = valueOfCWant().mul(collateralFactorMantissa).div(1e18);
 
         uint256 supplyRate2 = cSupplied.supplyRatePerBlock();
         uint256 collateralisedDeposit2 = valueOfCSupplied().mul(collateralFactorMantissa).div(1e18);
-        
+
         uint256 supplyRate3 = cReward.supplyRatePerBlock();
         uint256 collateralisedDeposit3 = valueOfCReward().mul(collateralFactorMantissa).div(1e18);
 
@@ -187,7 +183,7 @@ contract Strategy is BaseStrategy {
         uint256 denom2 = collateralisedDeposit1.mul(supplyRate1).add(collateralisedDeposit2.mul(supplyRate2)).add(collateralisedDeposit3.mul(supplyRate3));
 
         if (denom2 >= denom1) {
-            return uint256(-1);
+            return uint256(- 1);
         } else {
             uint256 numer = collateralisedDeposit1.add(collateralisedDeposit2).add(collateralisedDeposit3).sub(borrowBalance);
             uint256 denom = denom1 - denom2;
