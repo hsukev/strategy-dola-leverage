@@ -50,6 +50,7 @@ contract Strategy is BaseStrategy {
         borrowed = IERC20(delegatedVault.token());
         reward = IERC20(_reward);
 
+        require(cWant.underlying() != address(borrowed), "can't be delegating to your own vault");
         require(cWant.underlying() == address(want), "cWant does not match want");
         require(cBorrowed.underlying() == address(borrowed), "cBorrowed does not match delegated vault token");
 
@@ -358,7 +359,7 @@ contract Strategy is BaseStrategy {
 
     function setTargetCollateralFactor(uint256 _targetMantissa) external onlyAuthorized {
         (, uint256 _safeCollateralFactor,) = comptroller.markets(address(cWant));
-        require(_targetMantissa.add(collateralTolerance) > _safeCollateralFactor, "target collateral factor too high!!");
+        require(_targetMantissa.add(collateralTolerance) < _safeCollateralFactor, "target collateral factor too high!!");
         require(_targetMantissa > collateralTolerance, "target collateral factor too low!!");
 
         targetCollateralFactor = _targetMantissa;
