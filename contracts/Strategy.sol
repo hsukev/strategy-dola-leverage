@@ -145,7 +145,7 @@ contract Strategy is BaseStrategy {
         }
         uint256 currentCF = currentCollateralFactor();
         bool isWithinCFRange = targetCollateralFactor.sub(collateralTolerance) < currentCF && currentCF < targetCollateralFactor.add(collateralTolerance);
-        return blocksUntilLiquidation() <= blocksToLiquidationDangerZone && !isWithinCFRange;
+        return blocksUntilLiquidation() <= blocksToLiquidationDangerZone || !isWithinCFRange;
     }
 
     function prepareMigration(address _newStrategy) internal override {
