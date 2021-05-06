@@ -52,6 +52,7 @@ contract Strategy is BaseStrategy {
 
         require(cWant.underlying() != address(borrowed), "can't be delegating to your own vault");
         require(cWant.underlying() == address(want), "cWant does not match want");
+        // TODO cETH uses a unique interface that does not have an underlying() fx
         require(cBorrowed.underlying() == address(borrowed), "cBorrowed does not match delegated vault token");
 
         path = [delegatedVault.token(), address(want)];

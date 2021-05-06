@@ -40,16 +40,16 @@ def keeper(accounts):
 
 @pytest.fixture
 def token():
-    token_address = "0x6b175474e89094c44da98b954eedeac495271d0f"  # this should be the address of the ERC-20 used by the strategy/vault (DAI)
+    token_address = "0x0bc529c00C6401aEF6D220BE8C6Ea1667F6Ad93e"  # this should be the address of the ERC-20 used by the strategy/vault (DAI)
     yield Contract(token_address)
 
 
 @pytest.fixture
 def amount(accounts, token, user):
-    amount = 10_000 * 10 ** token.decimals()
+    amount = 10 * 10 ** token.decimals()
     # In order to get some funds for the token you are about to use,
     # it impersonate an exchange address to use it's funds.
-    reserve = accounts.at("0xd551234ae421e3bcba99a0da6d736074f22192ff", force=True)
+    reserve = accounts.at("0x3ff33d9162ad47660083d7dc4bc02fb231c81677", force=True)
     token.transfer(user, amount, {"from": reserve})
     yield amount
 
@@ -78,11 +78,35 @@ def vault(pm, gov, rewards, guardian, management, token):
 
 
 @pytest.fixture
-def strategy(strategist, keeper, vault, Strategy, gov):
-    strategy = strategist.deploy(Strategy, vault)
+def strategy(strategist, keeper, vault, Strategy, gov, cWant, cBorrowed, reward, delegatedVault):
+    strategy = strategist.deploy(Strategy, vault, cWant, cBorrowed, reward, delegatedVault)
     strategy.setKeeper(keeper)
     vault.addStrategy(strategy, 10_000, 0, 2 ** 256 - 1, 1_000, {"from": gov})
     yield strategy
+
+
+@pytest.fixture
+def cWant():
+    token_address = "0xde2af899040536884e062D3a334F2dD36F34b4a4"
+    yield Contract(token_address)
+
+
+@pytest.fixture
+def cBorrowed():
+    token_address = "0x697b4acAa24430F254224eB794d2a85ba1Fa1FB8"
+    yield Contract(token_address)
+
+
+@pytest.fixture
+def reward():
+    token_address = "0x41D5D79431A913C4aE7d69a668ecdfE5fF9DFB68"
+    yield Contract(token_address)
+
+
+@pytest.fixture
+def delegatedVault():
+    token_address = "0xa9fE4601811213c340e850ea305481afF02f5b28"
+    yield Contract(token_address)
 
 
 @pytest.fixture(scope="session")
