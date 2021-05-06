@@ -53,8 +53,8 @@ contract Strategy is BaseStrategy {
         require(cWant.underlying() != address(borrowed), "can't be delegating to your own vault");
         require(cWant.underlying() == address(want), "cWant does not match want");
         // TODO cETH uses a unique interface that does not have an underlying() fx
-        require(cBorrowed.underlying() == address(borrowed), "cBorrowed does not match delegated vault token");
-
+        //        require(cBorrowed.underlying() == address(borrowed), "cBorrowed does not match delegated vault token");
+        //
         path = [delegatedVault.token(), address(want)];
         wethWantPath = [address(weth), address(want)];
 
@@ -266,19 +266,23 @@ contract Strategy is BaseStrategy {
         return reward.balanceOf(address(this));
     }
 
+    function balanceOfUnderlying(CErc20Interface cToken) public view returns (uint256){
+        return estimateAmountCTokenInUnderlying(cToken.balanceOf(address(this)), cToken);
+    }
+
     // Value of deposited want in USD
     function valueOfCWant() public view returns (uint256){
-        return estimateAmountUnderlyingInUsd(cWant.balanceOfUnderlying(address(this)), cWant);
+        return estimateAmountUnderlyingInUsd(balanceOfUnderlying(cWant), cWant);
     }
 
     // Value of Inverse supplied tokens in USD
     function valueOfCSupplied() public view returns (uint256){
-        return estimateAmountUnderlyingInUsd(cSupplied.balanceOfUnderlying(address(this)), cSupplied);
+        return estimateAmountUnderlyingInUsd(balanceOfUnderlying(cSupplied), cSupplied);
     }
 
     // Value of reward tokens in USD
     function valueOfCReward() public view returns (uint256){
-        return estimateAmountUnderlyingInUsd(cReward.balanceOfUnderlying(address(this)), cReward);
+        return estimateAmountUnderlyingInUsd(balanceOfUnderlying(cReward), cReward);
     }
 
     function valueOfTotalCollateral() public view returns (uint256){
@@ -287,7 +291,7 @@ contract Strategy is BaseStrategy {
 
     // Value of borrowed tokens in USD
     function valueOfBorrowed() public view returns (uint256){
-        return estimateAmountUnderlyingInUsd(cBorrowed.borrowBalanceCurrent(address(this)), cBorrowed);
+        return estimateAmountUnderlyingInUsd(cBorrowed.borrowBalanceStored(address(this)), cBorrowed);
     }
 
     // Value of delegated vault deposits in USD
@@ -316,7 +320,7 @@ contract Strategy is BaseStrategy {
     }
 
     function estimateAmountCTokenInUnderlying(uint256 _amountCToken, CErc20Interface cToken) public view returns (uint256){
-        uint256 _underlyingPerCToken = cToken.exchangeRateCurrent();
+        uint256 _underlyingPerCToken = cToken.exchangeRateStored();
         return _amountCToken.mul(_underlyingPerCToken).div(1 ether);
     }
 
@@ -330,7 +334,7 @@ contract Strategy is BaseStrategy {
         // TODO: fix to correct start of escrow
         require(now.sub(0) > rewardEscrowPeriod, "Rewards are still in escrow!");
 
-        safeUnwindCTokenUnderlying(cReward.balanceOfUnderlying(address(this)), cReward, true);
+        safeUnwindCTokenUnderlying(balanceOfUnderlying(cReward), cReward, true);
         balanceOfReward();
         // TODO delegate or transfer? Not sure how vote delgation works
     }

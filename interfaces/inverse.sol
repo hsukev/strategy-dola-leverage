@@ -208,7 +208,7 @@ interface CTokenInterface {
 
     function totalBorrowsCurrent() external returns (uint);
 
-    function borrowBalanceCurrent(address account) external view returns (uint);
+    function borrowBalanceCurrent(address account) external returns (uint);
 
     function borrowBalanceStored(address account) external view returns (uint);
 
