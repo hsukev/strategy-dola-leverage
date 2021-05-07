@@ -233,7 +233,7 @@ contract Strategy is BaseStrategy {
 
     // Rebalances supply/borrow to maintain targetCollaterFactor
     // @param _pendingWithdrawInUsd = collateral that needs to be freed up after rebalancing
-    function rebalance(uint256 _pendingWithdrawInUsd) public onlyKeepers {
+    function rebalance(uint256 _pendingWithdrawInUsd) internal {
         int256 _adjustmentInUsd = calculateAdjustmentInUsd(_pendingWithdrawInUsd);
 
         if (_adjustmentInUsd > 0) {
@@ -313,7 +313,7 @@ contract Strategy is BaseStrategy {
     }
 
     function estimateAmountUsdInUnderlying(uint256 _amountInUsd, CErc20Interface cToken) public view returns (uint256){
-        uint256 _usdPerUnderlying = comptroller.oracle().getUnderlyingPrice(address(cReward));
+        uint256 _usdPerUnderlying = comptroller.oracle().getUnderlyingPrice(address(cToken));
         return _amountInUsd.mul(1 ether).div(_usdPerUnderlying);
     }
 
