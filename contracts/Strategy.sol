@@ -40,15 +40,18 @@ contract Strategy is BaseStrategy {
     uint256 public rewardEscrowPeriod = 14 days;
 
 
-    constructor(address _vault, address _cWant, address _cBorrowed, address _reward, address _delegatedVault) public BaseStrategy(_vault) {
+    constructor(address _vault, address _cWant, address _cBorrowed, address _cReward, address _delegatedVault) public BaseStrategy(_vault) {
         delegatedVault = VaultAPI(_delegatedVault);
         router = IUniswapV2Router02(address(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D));
         comptroller = ComptrollerInterface(address(0x4dCf7407AE5C07f8681e1659f626E114A7667339));
 
         cWant = CErc20Interface(_cWant);
         cBorrowed = CErc20Interface(_cBorrowed);
+        cReward = CErc20Interface(_cReward);
+        cSupplied = cWant;
+        // TODO remove after testing, or when private market is out
         borrowed = IERC20(delegatedVault.token());
-        reward = IERC20(_reward);
+        reward = IERC20(cReward.underlying());
 
         require(cWant.underlying() != address(borrowed), "can't be delegating to your own vault");
         require(cWant.underlying() == address(want), "cWant does not match want");
@@ -375,13 +378,14 @@ contract Strategy is BaseStrategy {
         inverseGovernance = _inverseGovernance;
     }
 
-    function setRouter(address _router) external onlyGovernance {
-        router = IUniswapV2Router02(address(_router));
+    function setRouter(address _uniswapV2Router) external onlyGovernance {
+        router = IUniswapV2Router02(address(_uniswapV2Router));
     }
 
     function setCollateralTolerance(uint256 _toleranceMantissa) external onlyGovernance {
         collateralTolerance = _toleranceMantissa;
     }
+
     //
     // For Inverse Finance
     //

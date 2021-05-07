@@ -78,8 +78,8 @@ def vault(pm, gov, rewards, guardian, management, token):
 
 
 @pytest.fixture
-def strategy(strategist, keeper, vault, Strategy, gov, cWant, cBorrowed, reward, delegatedVault):
-    strategy = strategist.deploy(Strategy, vault, cWant, cBorrowed, reward, delegatedVault)
+def strategy(strategist, keeper, vault, Strategy, gov, cWant, cBorrowed, cReward, delegatedVault):
+    strategy = strategist.deploy(Strategy, vault, cWant, cBorrowed, cReward, delegatedVault)
     strategy.setKeeper(keeper)
     vault.addStrategy(strategy, 10_000, 0, 2 ** 256 - 1, 1_000, {"from": gov})
     yield strategy
@@ -98,8 +98,8 @@ def cBorrowed():
 
 
 @pytest.fixture
-def reward():
-    token_address = "0x41D5D79431A913C4aE7d69a668ecdfE5fF9DFB68"
+def cReward():
+    token_address = "0xde2af899040536884e062D3a334F2dD36F34b4a4"
     yield Contract(token_address)
 
 
