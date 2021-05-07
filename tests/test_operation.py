@@ -13,7 +13,7 @@ def test_operation(
     assert token.balanceOf(vault.address) == amount
 
     # harvest
-    strategy.harvest()
+    strategy.harvest({"from": strategist})
     assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
 
     # tend()

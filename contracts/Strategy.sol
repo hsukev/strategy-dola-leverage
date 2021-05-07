@@ -241,7 +241,7 @@ contract Strategy is BaseStrategy {
             uint256 _adjustmentInBorrowed = estimateAmountUsdInUnderlying(uint256(_adjustmentInUsd), cBorrowed);
             uint _actualBorrowed = cBorrowed.borrow(_adjustmentInBorrowed);
             delegatedVault.deposit(_actualBorrowed);
-        } else {
+        } else if (_adjustmentInUsd < 0) {
             // undercollateralized, must unwind and repay to free up collateral
             uint256 _adjustmentInBorrowed = estimateAmountUsdInUnderlying(uint256(- _adjustmentInUsd), cBorrowed);
             uint256 _adjustmentInShares = estimateAmountBorrowedInShares(_adjustmentInBorrowed);
@@ -352,9 +352,12 @@ contract Strategy is BaseStrategy {
     }
 
     // Provide flexibility to switch borrow market in the future
-    function setCBorrowed(address _address, address _tokenVault) external onlyAuthorized {
+    function setCBorrowed(address _address, address _delegatedVault) external onlyAuthorized {
         comptroller.exitMarket(address(cBorrowed));
         cBorrowed = CErc20Interface(_address);
+
+        delegatedVault = VaultAPI(_delegatedVault);
+        // TODO add asserts to make sure _delegatedVault.token() matches cBorrowed.underlying(), etc
 
         address[] memory _markets = new address[](1);
         _markets[0] = _address;

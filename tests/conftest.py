@@ -40,7 +40,7 @@ def keeper(accounts):
 
 @pytest.fixture
 def token():
-    token_address = "0x0bc529c00C6401aEF6D220BE8C6Ea1667F6Ad93e"  # this should be the address of the ERC-20 used by the strategy/vault (DAI)
+    token_address = "0x865377367054516e17014ccded1e7d814edc9ce4 "  # DOLA
     yield Contract(token_address)
 
 
@@ -49,7 +49,7 @@ def amount(accounts, token, user):
     amount = 10 * 10 ** token.decimals()
     # In order to get some funds for the token you are about to use,
     # it impersonate an exchange address to use it's funds.
-    reserve = accounts.at("0x3ff33d9162ad47660083d7dc4bc02fb231c81677", force=True)
+    reserve = accounts.at("0x9547429C0e2c3A8B88C6833B58FCE962734C0E8C", force=True) # DOLA 3CRV Curve Metapool
     token.transfer(user, amount, {"from": reserve})
     yield amount
 
@@ -87,25 +87,25 @@ def strategy(strategist, keeper, vault, Strategy, gov, cWant, cBorrowed, cReward
 
 @pytest.fixture
 def cWant():
-    token_address = "0xde2af899040536884e062D3a334F2dD36F34b4a4"
+    token_address = "0x7fcb7dac61ee35b3d4a51117a7c58d53f0a8a670" # anDOLA
     yield Contract(token_address)
 
 
 @pytest.fixture
 def cBorrowed():
-    token_address = "0x697b4acAa24430F254224eB794d2a85ba1Fa1FB8"
+    token_address = "0x697b4acAa24430F254224eB794d2a85ba1Fa1FB8" # anETH
     yield Contract(token_address)
 
 
 @pytest.fixture
 def cReward():
-    token_address = "0xde2af899040536884e062D3a334F2dD36F34b4a4"
+    token_address = "0xde2af899040536884e062D3a334F2dD36F34b4a4" # anYFI
     yield Contract(token_address)
 
 
 @pytest.fixture
 def delegatedVault():
-    token_address = "0xa9fE4601811213c340e850ea305481afF02f5b28"
+    token_address = "0xa9fE4601811213c340e850ea305481afF02f5b28" # WETH yVault
     yield Contract(token_address)
 
 
