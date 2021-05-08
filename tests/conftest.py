@@ -49,7 +49,7 @@ def amount(accounts, token, user):
     amount = 10 * 10 ** token.decimals()
     # In order to get some funds for the token you are about to use,
     # it impersonate an exchange address to use it's funds.
-    reserve = accounts.at("0x9547429C0e2c3A8B88C6833B58FCE962734C0E8C", force=True) # DOLA 3CRV Curve Metapool
+    reserve = accounts.at("0x9547429C0e2c3A8B88C6833B58FCE962734C0E8C", force=True)  # DOLA 3CRV Curve Metapool
     token.transfer(user, amount, {"from": reserve})
     yield amount
 
@@ -89,29 +89,41 @@ def strategy(strategist, keeper, vault, Strategy, gov, cWant, cBorrowed, cReward
 
 @pytest.fixture
 def cWant():
-    token_address = "0x7fcb7dac61ee35b3d4a51117a7c58d53f0a8a670" # anDOLA
+    token_address = "0x7fcb7dac61ee35b3d4a51117a7c58d53f0a8a670"  # anDOLA
     yield Contract(token_address)
+
 
 @pytest.fixture
 def cSupplied():
-    token_address = "0xD60B06B457bFf7fc38AC5E7eCE2b5ad16B288326" # temporarily anXSUSHI
+    token_address = "0xD60B06B457bFf7fc38AC5E7eCE2b5ad16B288326"  # temporarily anXSUSHI
     yield Contract(token_address)
+
 
 @pytest.fixture
 def cBorrowed():
-    token_address = "0x697b4acAa24430F254224eB794d2a85ba1Fa1FB8" # anETH
+    token_address = "0x697b4acAa24430F254224eB794d2a85ba1Fa1FB8"  # anETH
     yield Contract(token_address)
 
 
 @pytest.fixture
 def cReward():
-    token_address = "0xde2af899040536884e062D3a334F2dD36F34b4a4" # anYFI
+    token_address = "0xde2af899040536884e062D3a334F2dD36F34b4a4"  # anYFI
     yield Contract(token_address)
 
 
 @pytest.fixture
+def rook():
+    token_address = "0xfA5047c9c78B8877af97BDcb85Db743fD7313d4a"
+    yield Contract(token_address)
+
+@pytest.fixture
+def rook_whale(accounts):
+    yield accounts.at("0xb81f5b9bd373b9d0df2e3191a01b8fa9b4d2832a", force=True)
+
+
+@pytest.fixture
 def delegatedVault():
-    token_address = "0xa9fE4601811213c340e850ea305481afF02f5b28" # WETH yVault
+    token_address = "0xa9fE4601811213c340e850ea305481afF02f5b28"  # WETH yVault
     yield Contract(token_address)
 
 
