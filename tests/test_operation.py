@@ -42,7 +42,7 @@ def test_emergency_exit(
 
 
 def test_profitable_harvest(
-    accounts, token, vault, strategy, user, strategist, amount, RELATIVE_APPROX, chain
+    accounts, token, vault, delegatedVault, strategy, gov, user, strategist, amount, RELATIVE_APPROX, chain
 ):
     # Deposit to the vault
     token.approve(vault.address, amount, {"from": user})
@@ -53,16 +53,21 @@ def test_profitable_harvest(
     strategy.harvest({"from": strategist})
     assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
 
-    # TODO: Add some code before harvest #2 to simulate earning yield
-
-    # Harvest 2: Realize profit
-    strategy.harvest({"from": strategist})
+    delegatedStrat = Contract(delegatedVault.withdrawalQueue(0))
+    delegatedStrat.harvest({"from": gov})
+    chain.sleep(60*60 * 24)  # 1 day
+    chain.mine(1)
+    delegatedStrat.harvest({"from": gov})
     chain.sleep(3600 * 6)  # 6 hrs needed for profits to unlock
     chain.mine(1)
-    profit = token.balanceOf(vault.address)  # Profits go to vault
-    # TODO: Uncomment the lines below
+
+    # Harvest 2: Realize profit
+    before_pps = vault.pricePerShare()
+
+    # TODO check for profits
+    # profit = token.balanceOf(vault.address)  # Profits go to vault
     # assert token.balanceOf(strategy) + profit > amount
-    # assert vault.pricePerShare() > before_pps
+    assert vault.pricePerShare() > before_pps
 
 
 def test_change_debt(
