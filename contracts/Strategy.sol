@@ -48,7 +48,7 @@ contract Strategy is BaseStrategy {
         cWant = CErc20Interface(_cWant);
         cBorrowed = CErc20Interface(_cBorrowed);
         cReward = CErc20Interface(_cReward);
-        cSupplied = cWant;
+
         // TODO remove after testing, or when private market is out
         borrowed = IERC20(delegatedVault.token());
         reward = IERC20(cReward.underlying());
@@ -133,15 +133,20 @@ contract Strategy is BaseStrategy {
     }
 
     function liquidatePosition(uint256 _amountNeeded) internal override returns (uint256 _liquidatedAmount, uint256 _loss){
-        uint256 totalAssets = want.balanceOf(address(this));
-        if (_amountNeeded > totalAssets) {
-            _liquidatedAmount = totalAssets;
-            _loss = _amountNeeded.sub(totalAssets);
+        uint256 looseBalance = balanceOfWant();
+        if (_amountNeeded > looseBalance) {
+
+            uint256 _desiredWithdraw = _amountNeeded.sub(looseBalance);
+            safeUnwindCTokenUnderlying(_desiredWithdraw, cWant, true);
+            uint256 newLooseBalance = balanceOfWant();
+
+            _liquidatedAmount = newLooseBalance;
+            if (_amountNeeded > newLooseBalance) {
+                _loss = _amountNeeded.sub(newLooseBalance);
+            }
         } else {
             _liquidatedAmount = _amountNeeded;
         }
-
-        safeUnwindCTokenUnderlying(_liquidatedAmount, cWant, true);
     }
 
     function tendTrigger(uint256 callCostInWei) public override virtual view returns (bool) {
@@ -351,22 +356,22 @@ contract Strategy is BaseStrategy {
         comptroller = ComptrollerInterface(address(_newComptroller));
     }
 
-    // Provide flexibility to switch borrow market in the future
-    function setCBorrowed(address _address, address _delegatedVault) external onlyAuthorized {
-        comptroller.exitMarket(address(cBorrowed));
-        cBorrowed = CErc20Interface(_address);
-
-        delegatedVault = VaultAPI(_delegatedVault);
-        // TODO add asserts to make sure _delegatedVault.token() matches cBorrowed.underlying(), etc
-
-        address[] memory _markets = new address[](1);
-        _markets[0] = _address;
-        comptroller.enterMarkets(_markets);
-    }
-
-    function setRewardToken(address _reward) external onlyAuthorized {
-        reward = IERC20(_reward);
-    }
+    //    // Provide flexibility to switch borrow market in the future
+    //    function setCBorrowed(address _address, address _delegatedVault) external onlyAuthorized {
+    //        comptroller.exitMarket(address(cBorrowed));
+    //        cBorrowed = CErc20Interface(_address);
+    //
+    //        delegatedVault = VaultAPI(_delegatedVault);
+    //        // TODO add asserts to make sure _delegatedVault.token() matches cBorrowed.underlying(), etc
+    //
+    //        address[] memory _markets = new address[](1);
+    //        _markets[0] = _address;
+    //        comptroller.enterMarkets(_markets);
+    //    }
+    //
+    //    function setRewardToken(address _reward) external onlyAuthorized {
+    //        reward = IERC20(_reward);
+    //    }
 
     function setTargetCollateralFactor(uint256 _targetMantissa) external onlyAuthorized {
         (, uint256 _safeCollateralFactor,) = comptroller.markets(address(cWant));
@@ -396,7 +401,7 @@ contract Strategy is BaseStrategy {
     function setCSupplied(address _address) external onlyInverseGovernance {
         require(_address != address(cWant), "supplied market cannot be same as want");
 
-        comptroller.exitMarket(address(cSupplied));
+        //        comptroller.exitMarket(address(cSupplied));
         cSupplied = CErc20Interface(address(_address));
 
         address[] memory _markets = new address[](1);

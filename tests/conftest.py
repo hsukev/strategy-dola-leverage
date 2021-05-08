@@ -78,8 +78,10 @@ def vault(pm, gov, rewards, guardian, management, token):
 
 
 @pytest.fixture
-def strategy(strategist, keeper, vault, Strategy, gov, cWant, cBorrowed, cReward, delegatedVault):
+def strategy(strategist, keeper, vault, Strategy, gov, cWant, cBorrowed, cReward, delegatedVault, cSupplied):
     strategy = strategist.deploy(Strategy, vault, cWant, cBorrowed, cReward, delegatedVault)
+    strategy.setInverseGovernance(strategist, {"from": gov})
+    strategy.setCSupplied(cSupplied, {"from": strategist})
     strategy.setKeeper(keeper)
     vault.addStrategy(strategy, 10_000, 0, 2 ** 256 - 1, 1_000, {"from": gov})
     yield strategy
@@ -90,6 +92,10 @@ def cWant():
     token_address = "0x7fcb7dac61ee35b3d4a51117a7c58d53f0a8a670" # anDOLA
     yield Contract(token_address)
 
+@pytest.fixture
+def cSupplied():
+    token_address = "0xD60B06B457bFf7fc38AC5E7eCE2b5ad16B288326" # temporarily anXSUSHI
+    yield Contract(token_address)
 
 @pytest.fixture
 def cBorrowed():
