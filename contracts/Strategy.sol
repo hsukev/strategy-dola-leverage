@@ -240,8 +240,8 @@ contract Strategy is BaseStrategy {
     // Calculate adjustments on borrowing market to maintain targetCollateralFactor
     // @param _amountPendingWithdrawInUsd should be left out of adjustment
     function calculateAdjustmentInUsd(uint256 _amountPendingWithdrawInUsd) internal returns (int256 adjustmentUsd){
-        uint256 _valueCollaterals = valueOfCWant().add(valueOfCSupplied()).add(valueOfCReward()).sub(_amountPendingWithdrawInUsd);
-        return int256(_valueCollaterals.mul(targetCollateralFactor).div(1 ether) - valueOfBorrowed());
+        int256 _valueCollaterals = int256(valueOfTotalCollateral()) - int256(_amountPendingWithdrawInUsd);
+        return _valueCollaterals * int256(targetCollateralFactor) / 1e18 - int256(valueOfBorrowed());
     }
 
     // Rebalances supply/borrow to maintain targetCollaterFactor
