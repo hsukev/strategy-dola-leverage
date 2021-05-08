@@ -58,6 +58,14 @@ contract Strategy is BaseStrategy {
         // TODO cETH uses a unique interface that does not have an underlying() fx
         //        require(cBorrowed.underlying() == address(borrowed), "cBorrowed does not match delegated vault token");
         //
+
+        require(address(cWant) != address(cBorrowed), "want and borrowed markets can't be the same");
+        require(address(cWant) != address(cSupplied), "want and supplied markets can't be the same");
+        require(address(cWant) != address(cReward), "want and reward markets can't be the same");
+        require(address(cBorrowed) != address(cSupplied), "borrowed and supplied markets can't be the same");
+        require(address(cBorrowed) != address(cReward), "borrowed and reward markets can't be the same");
+        require(address(cSupplied) != address(cReward), "supplied and reward markets can't be the same");
+
         path = [delegatedVault.token(), address(want)];
         wethWantPath = [address(weth), address(want)];
 

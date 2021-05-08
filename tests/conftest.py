@@ -82,7 +82,7 @@ def strategy(strategist, keeper, vault, Strategy, gov, cWant, cBorrowed, cReward
     strategy = strategist.deploy(Strategy, vault, cWant, cBorrowed, cReward, delegatedVault)
     strategy.setInverseGovernance(strategist, {"from": gov})
     strategy.setCSupplied(cSupplied, {"from": strategist})
-    strategy.setKeeper(keeper)
+    strategy.setKeeper(keeper, {"from": strategist})
     vault.addStrategy(strategy, 10_000, 0, 2 ** 256 - 1, 1_000, {"from": gov})
     yield strategy
 
