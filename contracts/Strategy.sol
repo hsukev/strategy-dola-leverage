@@ -5,6 +5,8 @@ pragma experimental ABIEncoderV2;
 import {BaseStrategy, StrategyParams, VaultAPI} from "@yearnvaults/contracts/BaseStrategy.sol";
 import {SafeERC20, SafeMath, IERC20, Address} from "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import {Math} from "@openzeppelin/contracts/math/Math.sol";
+
 
 import "../interfaces/inverse.sol";
 import "../interfaces/uniswap.sol";
@@ -107,36 +109,27 @@ contract Strategy is BaseStrategy {
     }
 
     function prepareReturn(uint256 _debtOutstanding) internal override returns (uint256 _profit, uint256 _loss, uint256 _debtPayment){
-        uint256 _debt = vault.strategies(address(this)).totalDebt;
-        uint256 _totalAssets = estimatedTotalAssets();
         uint256 _looseBalance = balanceOfWant();
 
-        if (_totalAssets > _debt) {
-            uint256 _amountProfited = _totalAssets.sub(_debt);
-            sellProfits(_amountProfited);
-            uint256 _balanceAfterProfit = balanceOfWant();
+        sellProfits();
 
-            if (_balanceAfterProfit > _debtOutstanding) {
-                _debtPayment = _debtOutstanding;
-                _profit = _balanceAfterProfit.sub(_debtOutstanding);
+        // TODO lent interest
+
+        uint256 _balanceAfterProfit = balanceOfWant();
+        if (_balanceAfterProfit > _looseBalance) {
+            _profit = _balanceAfterProfit.sub(_looseBalance);
+        }
+
+        if (_debtOutstanding > 0) {
+            (uint256 _amountLiquidated, uint256 _amountLoss) = liquidatePosition(_debtOutstanding);
+            _debtPayment = Math.min(_debtOutstanding, _amountLiquidated);
+            if (_profit > _amountLoss) {
+                _profit = _profit.sub(_amountLoss);
                 _loss = 0;
             } else {
-                uint256 _amountNeeded = _debtOutstanding.sub(_balanceAfterProfit);
-                safeUnwindCTokenUnderlying(_amountNeeded, cWant, true);
-                uint256 _balanceAfterUnwind = balanceOfWant();
-                _debtPayment = _balanceAfterUnwind;
                 _profit = 0;
-
-                // still not enough after unwind, then report loss
-                if (_debtPayment > _balanceAfterUnwind) {
-                    _loss = _debtPayment.sub(_balanceAfterUnwind);
-                }
+                _loss = _amountLoss.sub(_profit);
             }
-
-        } else {
-            _loss = _debt.sub(_totalAssets);
-            _profit = 0;
-            _debtPayment = 0;
         }
 
         // just claim but don't sell
@@ -274,9 +267,12 @@ contract Strategy is BaseStrategy {
     }
 
     // sell profits earned from delegated vault
-    function sellProfits(uint256 _amountInWant) internal {
-        if (_amountInWant > 0) {
-            uint256 _amountInBorrowed = estimateAmountUnderlyingInUnderlying(_amountInWant, cWant, cBorrowed);
+    function sellProfits() internal {
+        uint256 _debt = vault.strategies(address(this)).totalDebt;
+        uint256 _totalAssets = estimatedTotalAssets();
+        if (_totalAssets > _debt) {
+            uint256 _amountProfitInWant = _totalAssets.sub(_debt);
+            uint256 _amountInBorrowed = estimateAmountUnderlyingInUnderlying(_amountProfitInWant, cWant, cBorrowed);
             uint256 _amountInShares = estimateAmountBorrowedInShares(_amountInBorrowed);
             uint256 _actualWithdrawn = delegatedVault.withdraw(_amountInShares);
 

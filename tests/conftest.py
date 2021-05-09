@@ -76,7 +76,7 @@ def weth_amout(user, weth):
 def vault(pm, gov, rewards, guardian, management, token):
     Vault = pm(config["dependencies"][0]).Vault
     vault = guardian.deploy(Vault)
-    vault.initialize(token, gov, rewards, "", "", guardian)
+    vault.initialize(token, gov, rewards, "", "", guardian, {"from": gov})
     vault.setDepositLimit(2 ** 256 - 1, {"from": gov})
     vault.setManagement(management, {"from": gov})
     yield vault
@@ -120,6 +120,7 @@ def cReward():
 def rook():
     token_address = "0xfA5047c9c78B8877af97BDcb85Db743fD7313d4a"
     yield Contract(token_address)
+
 
 @pytest.fixture
 def rook_whale(accounts):
