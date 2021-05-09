@@ -109,20 +109,30 @@ contract Strategy is BaseStrategy {
     function prepareReturn(uint256 _debtOutstanding) internal override returns (uint256 _profit, uint256 _loss, uint256 _debtPayment){
         uint256 _debt = vault.strategies(address(this)).totalDebt;
         uint256 _totalAssets = estimatedTotalAssets();
+        uint256 _looseBalance = balanceOfWant();
 
         if (_totalAssets > _debt) {
-            uint256 _unwindAmountInWant = _totalAssets.sub(_debt).sub(balanceOfWant());
+            uint256 _amountProfited = _totalAssets.sub(_debt);
+            sellProfits(_amountProfited);
+            uint256 _balanceAfterProfit = balanceOfWant();
 
-            sellProfits(_unwindAmountInWant);
-            uint256 _balanceWithProfit = balanceOfWant();
-
-            _debtPayment = _debtOutstanding;
-            _loss = 0;
-            if (_balanceWithProfit > _debtOutstanding) {
-                _profit = _balanceWithProfit.sub(_debtOutstanding);
+            if (_balanceAfterProfit > _debtOutstanding) {
+                _debtPayment = _debtOutstanding;
+                _profit = _balanceAfterProfit.sub(_debtOutstanding);
+                _loss = 0;
             } else {
+                uint256 _amountNeeded = _debtOutstanding.sub(_balanceAfterProfit);
+                safeUnwindCTokenUnderlying(_amountNeeded, cWant, true);
+                uint256 _balanceAfterUnwind = balanceOfWant();
+                _debtPayment = _balanceAfterUnwind;
                 _profit = 0;
+
+                // still not enough after unwind, then report loss
+                if (_debtPayment > _balanceAfterUnwind) {
+                    _loss = _debtPayment.sub(_balanceAfterUnwind);
+                }
             }
+
         } else {
             _loss = _debt.sub(_totalAssets);
             _profit = 0;
@@ -265,12 +275,16 @@ contract Strategy is BaseStrategy {
 
     // sell profits earned from delegated vault
     function sellProfits(uint256 _amountInWant) internal {
-        uint256 _amountInBorrowed = estimateAmountUnderlyingInUnderlying(_amountInWant, cWant, cBorrowed);
-        uint256 _amountInShares = estimateAmountBorrowedInShares(_amountInBorrowed);
-        uint256 _actualWithdrawn = delegatedVault.withdraw(_amountInShares);
+        if (_amountInWant > 0) {
+            uint256 _amountInBorrowed = estimateAmountUnderlyingInUnderlying(_amountInWant, cWant, cBorrowed);
+            uint256 _amountInShares = estimateAmountBorrowedInShares(_amountInBorrowed);
+            uint256 _actualWithdrawn = delegatedVault.withdraw(_amountInShares);
 
-        // sell to want
-        router.swapExactTokensForTokens(_actualWithdrawn, uint256(0), path, address(this), now);
+            // sell to want
+            if (_actualWithdrawn > 0) {
+                router.swapExactTokensForTokens(_actualWithdrawn, uint256(0), path, address(this), now);
+            }
+        }
     }
 
     // Loose want
