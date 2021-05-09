@@ -61,6 +61,11 @@ def weth():
 
 
 @pytest.fixture
+def weth_whale(accounts):
+    yield accounts.at("0x2F0b23f53734252Bda2277357e97e1517d6B042A", force=True)
+
+
+@pytest.fixture
 def weth_amout(user, weth):
     weth_amout = 10 ** weth.decimals()
     user.transfer(weth, weth_amout)

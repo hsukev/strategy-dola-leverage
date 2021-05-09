@@ -1,5 +1,5 @@
 import brownie
-from brownie import Contract
+from brownie import Contract, Wei
 import pytest
 
 
@@ -42,7 +42,7 @@ def test_emergency_exit(
 
 
 def test_profitable_harvest(
-    accounts, token, vault, delegatedVault, strategy, gov, user, strategist, amount, RELATIVE_APPROX, chain
+    accounts, token, vault, weth, delegatedVault, strategy, user, strategist, weth_whale, amount, RELATIVE_APPROX, chain
 ):
     # Deposit to the vault
     token.approve(vault.address, amount, {"from": user})
@@ -53,20 +53,27 @@ def test_profitable_harvest(
     strategy.harvest({"from": strategist})
     assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
 
-    delegatedStrat = Contract(delegatedVault.withdrawalQueue(0))
-    delegatedStrat.harvest({"from": gov})
-    chain.sleep(60*60 * 24)  # 1 day
+    # delegatedStrat = Contract(delegatedVault.withdrawalQueue(0))
+    # delegatedStrat.harvest({"from": gov})
+    # chain.sleep(60*60 * 24)  # 1 day
+    # chain.mine(1)
+    # delegatedStrat.harvest({"from": gov})
+    # chain.sleep(3600 * 6)  # 6 hrs needed for profits to unlock
+    # chain.mine(1)
+
+    # increase rewards, lending interest and borrowing interests
+    chain.sleep(30 * 24 * 3600) # 30 days
     chain.mine(1)
-    delegatedStrat.harvest({"from": gov})
-    chain.sleep(3600 * 6)  # 6 hrs needed for profits to unlock
-    chain.mine(1)
+    strategy.harvest()
+    weth.transfer(delegatedVault, Wei("20_000 ether"), {"from": weth_whale}) # simulate delegated vault interest
 
     # Harvest 2: Realize profit
     before_pps = vault.pricePerShare()
+    strategy.harvest()
+    chain.sleep(3600 * 6)  # 6 hrs needed for profits to unlock
+    chain.mine(1)
 
-    # TODO check for profits
-    # profit = token.balanceOf(vault.address)  # Profits go to vault
-    # assert token.balanceOf(strategy) + profit > amount
+    assert vault.totalAssets() > amount
     assert vault.pricePerShare() > before_pps
 
 
