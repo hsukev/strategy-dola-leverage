@@ -51,6 +51,7 @@ def test_profitable_harvest(
 
     # Harvest 1: Send funds through the strategy
     strategy.harvest({"from": strategist})
+    assert strategy.valueOfDelegated() > 0 # ensure funds have been deposited into delegated vault
     assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
 
     # delegatedStrat = Contract(delegatedVault.withdrawalQueue(0))
@@ -73,8 +74,10 @@ def test_profitable_harvest(
     chain.sleep(3600 * 6)  # 6 hrs needed for profits to unlock
     chain.mine(1)
 
-    assert vault.totalAssets() > amount
+    profit = token.balanceOf(vault.address)  # Profits go to vault
+    assert token.balanceOf(strategy) + profit > amount
     assert vault.pricePerShare() > before_pps
+    assert vault.totalAssets() > amount
 
 
 def test_change_debt(

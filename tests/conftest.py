@@ -39,9 +39,9 @@ def keeper(accounts):
 
 
 @pytest.fixture
-def token():
-    token_address = "0x865377367054516e17014ccded1e7d814edc9ce4 "  # DOLA
-    yield Contract(token_address)
+def token(interface):
+    token_address = "0x865377367054516e17014ccded1e7d814edc9ce4"  # DOLA
+    yield interface.ERC20(token_address)
 
 
 @pytest.fixture

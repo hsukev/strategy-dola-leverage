@@ -76,9 +76,11 @@ contract Strategy is BaseStrategy {
         _markets[1] = address(cBorrowed);
         comptroller.enterMarkets(_markets);
 
+        targetCollateralFactor = 0.73 ether; // 73%
         collateralTolerance = 0.01 ether;
 
-        want.safeApprove(address(cWant), uint256(- 1));
+        want.safeApprove(address(cWant), uint256(-1));
+        borrowed.safeApprove(address(delegatedVault), uint256(-1));
     }
 
 
@@ -108,6 +110,8 @@ contract Strategy is BaseStrategy {
         return amountOut;
     }
 
+    event Debug(string message, uint256 amount);
+
     function prepareReturn(uint256 _debtOutstanding) internal override returns (uint256 _profit, uint256 _loss, uint256 _debtPayment){
         uint256 _looseBalance = balanceOfWant();
 
@@ -119,6 +123,11 @@ contract Strategy is BaseStrategy {
         if (_balanceAfterProfit > _looseBalance) {
             _profit = _balanceAfterProfit.sub(_looseBalance);
         }
+
+        emit Debug("_debtOutstanding", _debtOutstanding);
+        emit Debug("_looseBalance", _looseBalance);
+        emit Debug("_balanceAfterProfit", _balanceAfterProfit);
+        emit Debug("_profit", _profit);
 
         if (_debtOutstanding > 0) {
             (uint256 _amountLiquidated, uint256 _amountLoss) = liquidatePosition(_debtOutstanding);
@@ -132,13 +141,17 @@ contract Strategy is BaseStrategy {
             }
         }
 
+        emit Debug("_loss", _loss);
+        emit Debug("_profit", _profit);
+        emit Debug("_debtPayment", _debtPayment);
+
         // just claim but don't sell
         comptroller.claimComp(address(this));
     }
 
     function adjustPosition(uint256 _debtOutstanding) internal override {
-        cWant.mint(balanceOfWant());
-        cReward.mint(balanceOfReward());
+        assert(cWant.mint(balanceOfWant()) == 0);
+        assert(cReward.mint(balanceOfReward()) == 0);
 
         rebalance(0);
     }
@@ -251,11 +264,16 @@ contract Strategy is BaseStrategy {
     // @param _pendingWithdrawInUsd = collateral that needs to be freed up after rebalancing
     function rebalance(uint256 _pendingWithdrawInUsd) internal {
         int256 _adjustmentInUsd = calculateAdjustmentInUsd(_pendingWithdrawInUsd);
+        emit Debug("rebalance _adjustmentInUsd", uint256(_adjustmentInUsd));
 
         if (_adjustmentInUsd > 0) {
             // overcollateralized, can borrow more
             uint256 _adjustmentInBorrowed = estimateAmountUsdInUnderlying(uint256(_adjustmentInUsd), cBorrowed);
-            uint _actualBorrowed = cBorrowed.borrow(_adjustmentInBorrowed);
+            emit Debug("rebalance _adjustmentInBorrowed", uint256(_adjustmentInBorrowed));
+            assert(cBorrowed.borrow(_adjustmentInBorrowed) == 0); // TODO: failing here because strategy.valueOfTotalCollateral() == 0 ???
+            uint256 _actualBorrowed = borrowed.balanceOf(address(this));
+            emit Debug("rebalance _actualBorrowed", uint256(_actualBorrowed));
+
             delegatedVault.deposit(_actualBorrowed);
         } else if (_adjustmentInUsd < 0) {
             // undercollateralized, must unwind and repay to free up collateral
@@ -270,11 +288,20 @@ contract Strategy is BaseStrategy {
     function sellProfits() internal {
         uint256 _debt = vault.strategies(address(this)).totalDebt;
         uint256 _totalAssets = estimatedTotalAssets();
+
+        emit Debug("sell _debt", _debt);
+        emit Debug("sell _totalAssets", _totalAssets);
+        
         if (_totalAssets > _debt) {
             uint256 _amountProfitInWant = _totalAssets.sub(_debt);
-            uint256 _amountInBorrowed = estimateAmountUnderlyingInUnderlying(_amountProfitInWant, cWant, cBorrowed);
+            uint256 _amountInBorrowed = estimateAmountUsdInUnderlying(estimateAmountUnderlyingInUsd(_amountProfitInWant, cWant), cBorrowed);
             uint256 _amountInShares = estimateAmountBorrowedInShares(_amountInBorrowed);
             uint256 _actualWithdrawn = delegatedVault.withdraw(_amountInShares);
+
+            emit Debug("sell _amountProfitInWant", _amountProfitInWant);
+            emit Debug("sell _amountInBorrowed", _amountInBorrowed);
+            emit Debug("sell _amountInShares", _amountInShares);
+            emit Debug("sell _actualWithdrawn", _actualWithdrawn);
 
             // sell to want
             if (_actualWithdrawn > 0) {
@@ -324,10 +351,6 @@ contract Strategy is BaseStrategy {
     function valueOfDelegated() public view returns (uint256){
         uint256 _amountInBorrowed = delegatedVault.balanceOf(address(this)).mul(delegatedVault.pricePerShare()).div(delegatedVault.decimals());
         return estimateAmountUnderlyingInUsd(_amountInBorrowed, cBorrowed);
-    }
-
-    function estimateAmountUnderlyingInUnderlying(uint256 _amount, CErc20Interface _fromCToken, CErc20Interface _toCToken) public view returns (uint256){
-        return estimateAmountUsdInUnderlying(estimateAmountUnderlyingInUsd(_amount, _fromCToken), _toCToken);
     }
 
     function estimateAmountUnderlyingInUsd(uint256 _amountUnderlying, CErc20Interface cToken) public view returns (uint256){
