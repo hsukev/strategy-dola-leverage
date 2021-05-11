@@ -2,7 +2,7 @@ import pytest
 
 
 def test_revoke_strategy_from_vault(
-    token, vault, strategy, amount, user, gov, RELATIVE_APPROX
+        token, vault, strategy, amount, user, gov, RELATIVE_APPROX
 ):
     # Deposit to the vault and harvest
     token.approve(vault.address, amount, {"from": user})
@@ -18,7 +18,7 @@ def test_revoke_strategy_from_vault(
 
 
 def test_revoke_strategy_from_strategy(
-    token, vault, strategy, amount, gov, user, RELATIVE_APPROX
+        token, vault, strategy, amount, gov, user, RELATIVE_APPROX
 ):
     # Deposit to the vault and harvest
     token.approve(vault.address, amount, {"from": user})

@@ -76,11 +76,12 @@ contract Strategy is BaseStrategy {
         _markets[1] = address(cBorrowed);
         comptroller.enterMarkets(_markets);
 
-        targetCollateralFactor = 0.73 ether; // 73%
+        targetCollateralFactor = 0.5 ether;
+        // 50%
         collateralTolerance = 0.01 ether;
 
-        want.safeApprove(address(cWant), uint256(-1));
-        borrowed.safeApprove(address(delegatedVault), uint256(-1));
+        want.safeApprove(address(cWant), uint256(- 1));
+        borrowed.safeApprove(address(delegatedVault), uint256(- 1));
     }
 
 
@@ -203,6 +204,8 @@ contract Strategy is BaseStrategy {
         return protected;
     }
 
+    receive() external payable {}
+
 
     //
     // Helpers
@@ -260,6 +263,10 @@ contract Strategy is BaseStrategy {
         return _valueCollaterals * int256(targetCollateralFactor) / 1e18 - int256(valueOfBorrowed());
     }
 
+    function testBorrow() public returns (uint256){
+        return cBorrowed.borrow(uint256(100));
+    }
+
     // Rebalances supply/borrow to maintain targetCollaterFactor
     // @param _pendingWithdrawInUsd = collateral that needs to be freed up after rebalancing
     function rebalance(uint256 _pendingWithdrawInUsd) internal {
@@ -270,7 +277,9 @@ contract Strategy is BaseStrategy {
             // overcollateralized, can borrow more
             uint256 _adjustmentInBorrowed = estimateAmountUsdInUnderlying(uint256(_adjustmentInUsd), cBorrowed);
             emit Debug("rebalance _adjustmentInBorrowed", uint256(_adjustmentInBorrowed));
-            assert(cBorrowed.borrow(_adjustmentInBorrowed) == 0); // TODO: failing here because strategy.valueOfTotalCollateral() == 0 ???
+
+            assert(cBorrowed.borrow(_adjustmentInBorrowed) == 0);
+            // TODO: failing here because strategy.valueOfTotalCollateral() == 0 ???
             uint256 _actualBorrowed = borrowed.balanceOf(address(this));
             emit Debug("rebalance _actualBorrowed", uint256(_actualBorrowed));
 
@@ -291,7 +300,7 @@ contract Strategy is BaseStrategy {
 
         emit Debug("sell _debt", _debt);
         emit Debug("sell _totalAssets", _totalAssets);
-        
+
         if (_totalAssets > _debt) {
             uint256 _amountProfitInWant = _totalAssets.sub(_debt);
             uint256 _amountInBorrowed = estimateAmountUsdInUnderlying(estimateAmountUnderlyingInUsd(_amountProfitInWant, cWant), cBorrowed);
