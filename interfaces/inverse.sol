@@ -241,6 +241,12 @@ interface CTokenInterface {
 
 }
 
+interface CEther is CTokenInterface {
+    function repayBorrow() external payable;
+
+    function borrow(uint borrowAmount) external returns (uint);
+}
+
 interface CErc20Interface is CTokenInterface {
 
     /*** User Interface ***/

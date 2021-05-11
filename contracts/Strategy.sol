@@ -10,6 +10,7 @@ import {Math} from "@openzeppelin/contracts/math/Math.sol";
 
 import "../interfaces/inverse.sol";
 import "../interfaces/uniswap.sol";
+import "../interfaces/weth.sol";
 
 
 contract Strategy is BaseStrategy {
@@ -26,12 +27,12 @@ contract Strategy is BaseStrategy {
     VaultAPI public delegatedVault;
     ComptrollerInterface public comptroller;
     CErc20Interface public cWant;
-    CErc20Interface public cBorrowed;
+    CEther public cBorrowed;
     CErc20Interface public cSupplied; // private market for Yearn
     CErc20Interface public cReward;
     IERC20 public borrowed;
     IERC20 public reward;
-    IERC20 constant public weth = IERC20(address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2));
+    IWETH9 constant public weth = IWETH9(address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2));
 
     address[] public path;
     address[] public wethWantPath;
@@ -48,7 +49,7 @@ contract Strategy is BaseStrategy {
         comptroller = ComptrollerInterface(address(0x4dCf7407AE5C07f8681e1659f626E114A7667339));
 
         cWant = CErc20Interface(_cWant);
-        cBorrowed = CErc20Interface(_cBorrowed);
+        cBorrowed = CEther(_cBorrowed);
         cReward = CErc20Interface(_cReward);
 
         // TODO remove after testing, or when private market is out
@@ -82,6 +83,7 @@ contract Strategy is BaseStrategy {
 
         want.safeApprove(address(cWant), uint256(- 1));
         borrowed.safeApprove(address(delegatedVault), uint256(- 1));
+        weth.approve(address(this), uint(- 1));
     }
 
 
@@ -282,15 +284,20 @@ contract Strategy is BaseStrategy {
             assert(cBorrowed.borrow(_adjustmentInBorrowed) == 0);
             // TODO: failing here because strategy.valueOfTotalCollateral() == 0 ???
             uint256 _actualBorrowed = address(this).balance;
-            emit Debug("rebalance _actualBorrowed", uint256(_actualBorrowed));
 
-            delegatedVault.deposit(_actualBorrowed);
+            // wrap ether
+            weth.deposit{value : _actualBorrowed}();
+            uint256 _wethBalanace = weth.balanceOf(address(this));
+            emit Debug("rebalance _actualBorrowed", uint256(_wethBalanace));
+
+            delegatedVault.deposit(_wethBalanace);
         } else if (_adjustmentInUsd < 0) {
             // undercollateralized, must unwind and repay to free up collateral
             uint256 _adjustmentInBorrowed = estimateAmountUsdInUnderlying(uint256(- _adjustmentInUsd), cBorrowed);
             uint256 _adjustmentInShares = estimateAmountBorrowedInShares(_adjustmentInBorrowed);
             uint256 _amountBorrowedWithdrawn = delegatedVault.withdraw(_adjustmentInShares);
-            cBorrowed.repayBorrow(_amountBorrowedWithdrawn);
+            weth.withdraw(_amountBorrowedWithdrawn);
+            cBorrowed.repayBorrow{value : weth.balanceOf(address(this))}();
         }
     }
 
@@ -363,12 +370,12 @@ contract Strategy is BaseStrategy {
         return estimateAmountUnderlyingInUsd(_amountInBorrowed, cBorrowed);
     }
 
-    function estimateAmountUnderlyingInUsd(uint256 _amountUnderlying, CErc20Interface cToken) public view returns (uint256){
+    function estimateAmountUnderlyingInUsd(uint256 _amountUnderlying, CTokenInterface cToken) public view returns (uint256){
         uint256 _usdPerUnderlying = comptroller.oracle().getUnderlyingPrice(address(cToken));
         return _amountUnderlying.mul(_usdPerUnderlying).div(1 ether);
     }
 
-    function estimateAmountUsdInUnderlying(uint256 _amountInUsd, CErc20Interface cToken) public view returns (uint256){
+    function estimateAmountUsdInUnderlying(uint256 _amountInUsd, CTokenInterface cToken) public view returns (uint256){
         uint256 _usdPerUnderlying = comptroller.oracle().getUnderlyingPrice(address(cToken));
         return _amountInUsd.mul(1 ether).div(_usdPerUnderlying);
     }
@@ -378,7 +385,7 @@ contract Strategy is BaseStrategy {
         return _amountBorrowed.mul(delegatedVault.decimals()).div(_borrowedPerShare);
     }
 
-    function estimateAmountCTokenInUnderlying(uint256 _amountCToken, CErc20Interface cToken) public view returns (uint256){
+    function estimateAmountCTokenInUnderlying(uint256 _amountCToken, CTokenInterface cToken) public view returns (uint256){
         uint256 _underlyingPerCToken = cToken.exchangeRateStored();
         return _amountCToken.mul(_underlyingPerCToken).div(1 ether);
     }
