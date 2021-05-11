@@ -260,6 +260,7 @@ contract Strategy is BaseStrategy {
     // @param _amountPendingWithdrawInUsd should be left out of adjustment
     function calculateAdjustmentInUsd(uint256 _amountPendingWithdrawInUsd) internal returns (int256 adjustmentUsd){
         int256 _valueCollaterals = int256(valueOfTotalCollateral()) - int256(_amountPendingWithdrawInUsd);
+        emit Debug("calculateAdjustment _valueCollaterals", uint256(_valueCollaterals));
         return _valueCollaterals * int256(targetCollateralFactor) / 1e18 - int256(valueOfBorrowed());
     }
 
@@ -280,7 +281,7 @@ contract Strategy is BaseStrategy {
 
             assert(cBorrowed.borrow(_adjustmentInBorrowed) == 0);
             // TODO: failing here because strategy.valueOfTotalCollateral() == 0 ???
-            uint256 _actualBorrowed = borrowed.balanceOf(address(this));
+            uint256 _actualBorrowed = address(this).balance;
             emit Debug("rebalance _actualBorrowed", uint256(_actualBorrowed));
 
             delegatedVault.deposit(_actualBorrowed);
