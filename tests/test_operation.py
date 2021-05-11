@@ -4,7 +4,7 @@ import pytest
 
 
 def test_operation(
-    accounts, token, vault, strategy, user, strategist, amount, RELATIVE_APPROX
+        accounts, token, vault, strategy, user, strategist, amount, RELATIVE_APPROX, delegatedVault
 ):
     # Deposit to the vault
     user_balance_before = token.balanceOf(user)
@@ -22,12 +22,12 @@ def test_operation(
     # withdrawal
     vault.withdraw({"from": user})
     assert (
-        pytest.approx(token.balanceOf(user), rel=RELATIVE_APPROX) == user_balance_before
+            pytest.approx(token.balanceOf(user), rel=RELATIVE_APPROX) == user_balance_before
     )
 
 
 def test_emergency_exit(
-    accounts, token, vault, strategy, user, strategist, amount, RELATIVE_APPROX
+        accounts, token, vault, strategy, user, strategist, amount, RELATIVE_APPROX
 ):
     # Deposit to the vault
     token.approve(vault.address, amount, {"from": user})
@@ -42,7 +42,8 @@ def test_emergency_exit(
 
 
 def test_profitable_harvest(
-    accounts, token, vault, weth, delegatedVault, strategy, user, strategist, weth_whale, amount, RELATIVE_APPROX, chain
+        accounts, token, vault, weth, delegatedVault, strategy, user, strategist, weth_whale, amount, RELATIVE_APPROX,
+        chain
 ):
     # Deposit to the vault
     token.approve(vault.address, amount, {"from": user})
@@ -51,7 +52,7 @@ def test_profitable_harvest(
 
     # Harvest 1: Send funds through the strategy
     strategy.harvest({"from": strategist})
-    assert strategy.valueOfDelegated() > 0 # ensure funds have been deposited into delegated vault
+    assert strategy.valueOfDelegated() > 0  # ensure funds have been deposited into delegated vault
     assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
 
     # delegatedStrat = Contract(delegatedVault.withdrawalQueue(0))
@@ -63,10 +64,10 @@ def test_profitable_harvest(
     # chain.mine(1)
 
     # increase rewards, lending interest and borrowing interests
-    chain.sleep(30 * 24 * 3600) # 30 days
+    chain.sleep(30 * 24 * 3600)  # 30 days
     chain.mine(1)
     strategy.harvest()
-    weth.transfer(delegatedVault, Wei("20_000 ether"), {"from": weth_whale}) # simulate delegated vault interest
+    weth.transfer(delegatedVault, Wei("20_000 ether"), {"from": weth_whale})  # simulate delegated vault interest
 
     # Harvest 2: Realize profit
     before_pps = vault.pricePerShare()
@@ -81,7 +82,7 @@ def test_profitable_harvest(
 
 
 def test_change_debt(
-    gov, token, vault, strategy, user, strategist, amount, RELATIVE_APPROX
+        gov, token, vault, strategy, user, strategist, amount, RELATIVE_APPROX
 ):
     # Deposit to the vault and harvest
     token.approve(vault.address, amount, {"from": user})
@@ -132,7 +133,7 @@ def test_sweep(gov, vault, strategy, token, user, amount, rook, rook_whale):
 
 
 def test_triggers(
-    gov, vault, strategy, token, amount, user, weth, weth_amout, strategist
+        gov, vault, strategy, token, amount, user, weth, weth_amout, strategist
 ):
     # Deposit to the vault and harvest
     token.approve(vault.address, amount, {"from": user})

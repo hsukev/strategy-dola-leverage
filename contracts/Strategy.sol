@@ -282,7 +282,6 @@ contract Strategy is BaseStrategy {
             emit Debug("rebalance _adjustmentInBorrowed", uint256(_adjustmentInBorrowed));
 
             assert(cBorrowed.borrow(_adjustmentInBorrowed) == 0);
-            // TODO: failing here because strategy.valueOfTotalCollateral() == 0 ???
             uint256 _actualBorrowed = address(this).balance;
 
             // wrap ether
@@ -295,9 +294,25 @@ contract Strategy is BaseStrategy {
             // undercollateralized, must unwind and repay to free up collateral
             uint256 _adjustmentInBorrowed = estimateAmountUsdInUnderlying(uint256(- _adjustmentInUsd), cBorrowed);
             uint256 _adjustmentInShares = estimateAmountBorrowedInShares(_adjustmentInBorrowed);
-            uint256 _amountBorrowedWithdrawn = delegatedVault.withdraw(_adjustmentInShares);
+            uint256 _adjustmentInSharesAllowed = Math.min(delegatedVault.balanceOf(address(this)), _adjustmentInShares);
+            uint256 _amountBorrowedWithdrawn = delegatedVault.withdraw(_adjustmentInSharesAllowed);
+            emit Debug("rebalance _amountBorrowedWithdrawn", uint256(_amountBorrowedWithdrawn));
+
+
+            uint256 _ethBal = address(this).balance;
+            emit Debug("rebalance _ethBal", uint256(_ethBal));
+
             weth.withdraw(_amountBorrowedWithdrawn);
-            cBorrowed.repayBorrow{value : weth.balanceOf(address(this))}();
+            uint256 _ethBal0 = address(this).balance;
+            emit Debug("rebalance _ethBal0", uint256(_ethBal0));
+
+            uint256 _borrowBal = cBorrowed.borrowBalanceStored(address(this));
+            emit Debug("rebalance _borrowBal", uint256(_borrowBal));
+
+            cBorrowed.repayBorrow{value : _ethBal}(); // TODO failing here, repay is not actually repaying
+            uint256 _ethBal1 = address(this).balance;
+            emit Debug("rebalance _ethBal1", uint256(_ethBal1));
+
         }
     }
 
@@ -366,7 +381,7 @@ contract Strategy is BaseStrategy {
 
     // Value of delegated vault deposits in USD
     function valueOfDelegated() public view returns (uint256){
-        uint256 _amountInBorrowed = delegatedVault.balanceOf(address(this)).mul(delegatedVault.pricePerShare()).div(delegatedVault.decimals());
+        uint256 _amountInBorrowed = delegatedVault.balanceOf(address(this)).mul(delegatedVault.pricePerShare()).div(10 ** delegatedVault.decimals());
         return estimateAmountUnderlyingInUsd(_amountInBorrowed, cBorrowed);
     }
 
@@ -382,7 +397,7 @@ contract Strategy is BaseStrategy {
 
     function estimateAmountBorrowedInShares(uint256 _amountBorrowed) public view returns (uint256){
         uint256 _borrowedPerShare = delegatedVault.pricePerShare();
-        return _amountBorrowed.mul(delegatedVault.decimals()).div(_borrowedPerShare);
+        return _amountBorrowed.mul(10 ** delegatedVault.decimals()).div(_borrowedPerShare);
     }
 
     function estimateAmountCTokenInUnderlying(uint256 _amountCToken, CTokenInterface cToken) public view returns (uint256){
