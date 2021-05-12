@@ -47,6 +47,10 @@ contract Strategy is BaseStrategy {
         delegatedVault = VaultAPI(_delegatedVault);
         router = IUniswapV2Router02(address(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D));
         comptroller = ComptrollerInterface(address(0x4dCf7407AE5C07f8681e1659f626E114A7667339));
+        inverseGovernance = 0x35d9f4953748b318f18c30634bA299b237eeDfff;
+        // TODO temporarily GovernorAlpha
+        cSupplied = CErc20Interface(0xD60B06B457bFf7fc38AC5E7eCE2b5ad16B288326);
+        // TODO temporarily Sushibar
 
         cWant = CErc20Interface(_cWant);
         cBorrowed = CEther(_cBorrowed);
@@ -187,7 +191,9 @@ contract Strategy is BaseStrategy {
     }
 
     function prepareMigration(address _newStrategy) internal override {
-        _newStrategy.transfer(balanceOfEth());
+        // borrowed position can't be transferred so needs to unwind everything and pay it off before migrating
+        liquidatePosition(estimatedTotalAssets());
+
         reward.transfer(_newStrategy, balanceOfReward());
         borrowed.transfer(_newStrategy, borrowed.balanceOf(address(this)));
         delegatedVault.transfer(_newStrategy, delegatedVault.balanceOf(address(this)));
