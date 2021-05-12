@@ -83,7 +83,8 @@ contract Strategy is BaseStrategy {
 
         want.safeApprove(address(cWant), uint256(- 1));
         borrowed.safeApprove(address(delegatedVault), uint256(- 1));
-        weth.approve(address(this), uint(- 1));
+        weth.approve(address(this), uint256(- 1));
+        weth.approve(address(router), uint256(- 1));
     }
 
 
@@ -113,7 +114,9 @@ contract Strategy is BaseStrategy {
         return amountOut;
     }
 
+    event Debug(string message, int256 amount);
     event Debug(string message, uint256 amount);
+    event Debug(string message);
 
     function prepareReturn(uint256 _debtOutstanding) internal override returns (uint256 _profit, uint256 _loss, uint256 _debtPayment){
         uint256 _looseBalance = balanceOfWant();
@@ -126,11 +129,6 @@ contract Strategy is BaseStrategy {
         if (_balanceAfterProfit > _looseBalance) {
             _profit = _balanceAfterProfit.sub(_looseBalance);
         }
-
-        emit Debug("_debtOutstanding", _debtOutstanding);
-        emit Debug("_looseBalance", _looseBalance);
-        emit Debug("_balanceAfterProfit", _balanceAfterProfit);
-        emit Debug("_profit", _profit);
 
         if (_debtOutstanding > 0) {
             (uint256 _amountLiquidated, uint256 _amountLoss) = liquidatePosition(_debtOutstanding);
@@ -166,10 +164,13 @@ contract Strategy is BaseStrategy {
             uint256 _desiredWithdraw = _amountNeeded.sub(looseBalance);
             safeUnwindCTokenUnderlying(_desiredWithdraw, cWant, true);
             uint256 newLooseBalance = balanceOfWant();
+            emit Debug("_liquidatePosition newLooseBalance", newLooseBalance);
 
             _liquidatedAmount = newLooseBalance;
             if (_amountNeeded > newLooseBalance) {
+
                 _loss = _amountNeeded.sub(newLooseBalance);
+                emit Debug("_liquidatePosition _loss", _loss);
             }
         } else {
             _liquidatedAmount = _amountNeeded;
@@ -249,20 +250,37 @@ contract Strategy is BaseStrategy {
     // free up _amountUnderlying worth of borrowed while maintaining targetCollateralRatio
     // @param redeem: True will redeem to cToken.underlying. False will remain as cToken
     function safeUnwindCTokenUnderlying(uint256 _amountUnderlying, CErc20Interface _cToken, bool redeem) internal {
+        emit Debug("_safeUnwindCTokenUnderlying");
+
         uint256 _amountUnderlyingInUsd = estimateAmountUnderlyingInUsd(_amountUnderlying, _cToken);
 
         rebalance(_amountUnderlyingInUsd);
 
+        uint256 _underlying = valueOfCWant();
+
+        uint256 _c = _cToken.balanceOf(address(this));
+
         if (redeem) {
-            _cToken.redeemUnderlying(_amountUnderlying);
+            uint256 _desiredInC = estimateAmountUnderlyingInCToken(_amountUnderlyingInUsd, _cToken);
+            emit Debug("calculateAdjustment _balanceInC", uint256(_desiredInC));
+            uint256 _cavailable = _cToken.balanceOf(address(this));
+            emit Debug("calculateAdjustment _cavailable", uint256(_cavailable));
+
+            uint256 _amountCRedeemable = Math.min(_desiredInC, _cavailable) * 99999 / 100000;
+            emit Debug("calculateAdjustment _amountCRedeemable", uint256(_amountCRedeemable));
+            uint256 error = _cToken.redeem(_amountCRedeemable);
+            emit Debug("calculateAdjustment error", uint256(error));
+
+            uint256 _want = balanceOfWant();
+            emit Debug("calculateAdjustment _want", uint256(_want));
         }
     }
 
     // Calculate adjustments on borrowing market to maintain targetCollateralFactor
     // @param _amountPendingWithdrawInUsd should be left out of adjustment
     function calculateAdjustmentInUsd(uint256 _amountPendingWithdrawInUsd) internal returns (int256 adjustmentUsd){
+        emit Debug("_calculateAdjustmentInUsd");
         int256 _valueCollaterals = int256(valueOfTotalCollateral()) - int256(_amountPendingWithdrawInUsd);
-        emit Debug("calculateAdjustment _valueCollaterals", uint256(_valueCollaterals));
         return _valueCollaterals * int256(targetCollateralFactor) / 1e18 - int256(valueOfBorrowed());
     }
 
@@ -273,8 +291,10 @@ contract Strategy is BaseStrategy {
     // Rebalances supply/borrow to maintain targetCollaterFactor
     // @param _pendingWithdrawInUsd = collateral that needs to be freed up after rebalancing
     function rebalance(uint256 _pendingWithdrawInUsd) internal {
+        emit Debug("_rebalance");
+        emit Debug("rebalance _pendingWithdrawInUsd", uint256(_pendingWithdrawInUsd));
         int256 _adjustmentInUsd = calculateAdjustmentInUsd(_pendingWithdrawInUsd);
-        emit Debug("rebalance _adjustmentInUsd", uint256(_adjustmentInUsd));
+        emit Debug("rebalance _adjustmentInUsd", int256(_adjustmentInUsd));
 
         if (_adjustmentInUsd > 0) {
             // overcollateralized, can borrow more
@@ -291,33 +311,27 @@ contract Strategy is BaseStrategy {
 
             delegatedVault.deposit(_wethBalanace);
         } else if (_adjustmentInUsd < 0) {
+            emit Debug("_adjust negative");
+
             // undercollateralized, must unwind and repay to free up collateral
             uint256 _adjustmentInBorrowed = estimateAmountUsdInUnderlying(uint256(- _adjustmentInUsd), cBorrowed);
             uint256 _adjustmentInShares = estimateAmountBorrowedInShares(_adjustmentInBorrowed);
             uint256 _adjustmentInSharesAllowed = Math.min(delegatedVault.balanceOf(address(this)), _adjustmentInShares);
             uint256 _amountBorrowedWithdrawn = delegatedVault.withdraw(_adjustmentInSharesAllowed);
-            emit Debug("rebalance _amountBorrowedWithdrawn", uint256(_amountBorrowedWithdrawn));
 
-
-            uint256 _ethBal = address(this).balance;
-            emit Debug("rebalance _ethBal", uint256(_ethBal));
-
+            // unwrap eth
             weth.withdraw(_amountBorrowedWithdrawn);
-            uint256 _ethBal0 = address(this).balance;
-            emit Debug("rebalance _ethBal0", uint256(_ethBal0));
 
-            uint256 _borrowBal = cBorrowed.borrowBalanceStored(address(this));
-            emit Debug("rebalance _borrowBal", uint256(_borrowBal));
-
-            cBorrowed.repayBorrow{value : _ethBal}(); // TODO failing here, repay is not actually repaying
-            uint256 _ethBal1 = address(this).balance;
-            emit Debug("rebalance _ethBal1", uint256(_ethBal1));
-
+            emit Debug("_adjust bal eth before", balanceOfEth());
+            cBorrowed.repayBorrow{value : balanceOfEth()}();
+            emit Debug("_adjust bal eth after", balanceOfEth());
         }
     }
 
     // sell profits earned from delegated vault
     function sellProfits() internal {
+        emit Debug("_sellProfits");
+
         uint256 _debt = vault.strategies(address(this)).totalDebt;
         uint256 _totalAssets = estimatedTotalAssets();
 
@@ -349,6 +363,10 @@ contract Strategy is BaseStrategy {
 
     function balanceOfReward() public view returns (uint256){
         return reward.balanceOf(address(this));
+    }
+
+    function balanceOfEth() public view returns (uint256){
+        return address(this).balance;
     }
 
     function balanceOfUnderlying(CErc20Interface cToken) public view returns (uint256){
@@ -404,6 +422,12 @@ contract Strategy is BaseStrategy {
         uint256 _underlyingPerCToken = cToken.exchangeRateStored();
         return _amountCToken.mul(_underlyingPerCToken).div(1 ether);
     }
+
+    function estimateAmountUnderlyingInCToken(uint256 _amountUnderlying, CTokenInterface cToken) public view returns (uint256){
+        uint256 _underlyingPerCToken = cToken.exchangeRateStored();
+        return _amountUnderlying.mul(1 ether).div(_underlyingPerCToken);
+    }
+
 
     // mantissa
     function currentCollateralFactor() internal view returns (uint256){

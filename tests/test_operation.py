@@ -76,7 +76,7 @@ def test_profitable_harvest(
     chain.mine(1)
 
     profit = token.balanceOf(vault.address)  # Profits go to vault
-    assert token.balanceOf(strategy) + profit > amount
+    assert strategy.estimatedTotalAssets() + profit > amount
     assert vault.pricePerShare() > before_pps
     assert vault.totalAssets() > amount
 
