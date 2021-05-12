@@ -479,10 +479,6 @@ contract Strategy is BaseStrategy {
         rebalance(0);
     }
 
-    function setInverseGovernance(address _inverseGovernance) external onlyGovernance {
-        inverseGovernance = _inverseGovernance;
-    }
-
     function setRouter(address _uniswapV2Router) external onlyGovernance {
         router = IUniswapV2Router02(address(_uniswapV2Router));
     }
@@ -494,6 +490,10 @@ contract Strategy is BaseStrategy {
     //
     // For Inverse Finance
     //
+
+    function setInverseGovernance(address _inverseGovernance) external onlyInverseGovernance {
+        inverseGovernance = _inverseGovernance;
+    }
 
     function setCSupplied(address _address) external onlyInverseGovernance {
         require(_address != address(cWant), "supplied market cannot be same as want");

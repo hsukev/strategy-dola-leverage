@@ -64,6 +64,7 @@ def test_profitable_harvest(
     # chain.mine(1)
 
     # increase rewards, lending interest and borrowing interests
+    # assets_before = vault.totalAssets()
     chain.sleep(30 * 24 * 3600)  # 30 days
     chain.mine(1)
     strategy.harvest()
@@ -74,6 +75,10 @@ def test_profitable_harvest(
     strategy.harvest()
     chain.sleep(3600 * 6)  # 6 hrs needed for profits to unlock
     chain.mine(1)
+
+    # print(
+    #     "Estimated APR: ", "{:.2%}".format((vault.totalAssets() - assets_before) / assets_before * 12),
+    # )
 
     profit = token.balanceOf(vault.address)  # Profits go to vault
     assert strategy.estimatedTotalAssets() + profit > amount
