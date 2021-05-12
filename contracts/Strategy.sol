@@ -103,7 +103,7 @@ contract Strategy is BaseStrategy {
     }
 
     function estimatedTotalAssets() public view override returns (uint256) {
-        return balanceOfWant().add(estimateAmountUsdInUnderlying(valueOfCWant().add(valueOfDelegated()).sub(valueOfBorrowed()), cWant));
+        return balanceOfWant().add(estimateAmountUsdInUnderlying(valueOfCWant().add(valueOfDelegated()).sub(valueOfBorrowedOwed()), cWant));
     }
 
     function ethToWant(uint256 _amtInWei) public view returns (uint256){
@@ -187,6 +187,7 @@ contract Strategy is BaseStrategy {
     }
 
     function prepareMigration(address _newStrategy) internal override {
+        _newStrategy.transfer(balanceOfEth());
         reward.transfer(_newStrategy, balanceOfReward());
         borrowed.transfer(_newStrategy, borrowed.balanceOf(address(this)));
         delegatedVault.transfer(_newStrategy, delegatedVault.balanceOf(address(this)));
@@ -231,7 +232,7 @@ contract Strategy is BaseStrategy {
         uint256 supplyRate3 = cReward.supplyRatePerBlock();
         uint256 collateralisedDeposit3 = valueOfCReward().mul(collateralFactorMantissa).div(1e18);
 
-        uint256 borrowBalance = valueOfBorrowed();
+        uint256 borrowBalance = valueOfBorrowedOwed();
         uint256 borrrowRate = cBorrowed.borrowRatePerBlock();
 
         uint256 denom1 = borrowBalance.mul(borrrowRate);
@@ -281,7 +282,7 @@ contract Strategy is BaseStrategy {
     function calculateAdjustmentInUsd(uint256 _amountPendingWithdrawInUsd) internal returns (int256 adjustmentUsd){
         emit Debug("_calculateAdjustmentInUsd");
         int256 _valueCollaterals = int256(valueOfTotalCollateral()) - int256(_amountPendingWithdrawInUsd);
-        return _valueCollaterals * int256(targetCollateralFactor) / 1e18 - int256(valueOfBorrowed());
+        return _valueCollaterals * int256(targetCollateralFactor) / 1e18 - int256(valueOfBorrowedOwed());
     }
 
     function testBorrow() public returns (uint256){
@@ -393,7 +394,7 @@ contract Strategy is BaseStrategy {
     }
 
     // Value of borrowed tokens in USD
-    function valueOfBorrowed() public view returns (uint256){
+    function valueOfBorrowedOwed() public view returns (uint256){
         return estimateAmountUnderlyingInUsd(cBorrowed.borrowBalanceStored(address(this)), cBorrowed);
     }
 
@@ -431,7 +432,7 @@ contract Strategy is BaseStrategy {
 
     // mantissa
     function currentCollateralFactor() internal view returns (uint256){
-        return valueOfBorrowed().mul(1 ether).div(valueOfTotalCollateral());
+        return valueOfBorrowedOwed().mul(1 ether).div(valueOfTotalCollateral());
     }
 
     // unwind reward so it can be delegated for voting or sent to yearn gov
