@@ -513,8 +513,10 @@ contract Strategy is BaseStrategy {
         comptroller.enterMarkets(_markets);
     }
 
-    function supplyCollateral(uint256 _amount) external onlyInverseGovernance {
-        cSupplied.transferFrom(msg.sender, address(this), _amount);
+
+    // @param _amount in cToken from the private marketa
+    function supplyCollateral(uint256 _amount) external onlyInverseGovernance returns (bool){
+        return cSupplied.transferFrom(msg.sender, address(this), _amount);
     }
 
     function removeCollateral(uint256 _amount) external onlyInverseGovernance {

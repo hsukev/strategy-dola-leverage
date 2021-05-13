@@ -103,6 +103,12 @@ def cSupplied():
 
 
 @pytest.fixture
+def cSupplied_whale(accounts):
+    token_address = "0x7BFEe91193d9Df2Ac0bFe90191D40F23c773C060"  # temporarily anXSUSHI
+    yield accounts.at(token_address, force=True)
+
+
+@pytest.fixture
 def cBorrowed():
     token_address = "0x697b4acAa24430F254224eB794d2a85ba1Fa1FB8"  # anETH
     yield Contract(token_address)
@@ -129,6 +135,19 @@ def rook_whale(accounts):
 def delegatedVault():
     token_address = "0xa9fE4601811213c340e850ea305481afF02f5b28"  # WETH yVault
     yield Contract(token_address)
+
+
+@pytest.fixture
+def inverseGov(cSupplied_whale, cSupplied, cSupply_amount):
+    token_address = "0x35d9f4953748b318f18c30634bA299b237eeDfff"
+    invGov = Contract(token_address)
+    cSupplied.transfer(invGov, cSupply_amount, {"from": cSupplied_whale})
+    yield invGov
+
+
+@pytest.fixture
+def cSupply_amount(cSupplied):
+    yield 1000000 * 10 ** cSupplied.decimals()
 
 
 @pytest.fixture(scope="session")
