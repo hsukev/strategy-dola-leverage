@@ -148,11 +148,14 @@ contract Strategy is BaseStrategy {
         }
 
         emit Debug("_loss", _loss);
+        emit Debug("_balanceOfWant", balanceOfWant());
         emit Debug("_profit", _profit);
         emit Debug("_debtPayment", _debtPayment);
 
         // just claim but don't sell
         comptroller.claimComp(address(this));
+        emit Debug("_balanceOfReward", balanceOfReward());
+
     }
 
     function adjustPosition(uint256 _debtOutstanding) internal override {

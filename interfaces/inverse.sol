@@ -212,7 +212,7 @@ interface CTokenInterface {
 
     function borrowBalanceStored(address account) external view returns (uint);
 
-    function exchangeRateCurrent() external view returns (uint);
+    function exchangeRateCurrent() external returns (uint);
 
     function exchangeRateStored() external view returns (uint);
 
