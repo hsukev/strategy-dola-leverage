@@ -76,9 +76,10 @@ contract Strategy is BaseStrategy {
         path = [delegatedVault.token(), address(want)];
         wethWantPath = [address(weth), address(want)];
 
-        address[] memory _markets = new address[](2);
+        address[] memory _markets = new address[](3);
         _markets[0] = address(cWant);
         _markets[1] = address(cBorrowed);
+        _markets[2] = address(cSupplied);
         comptroller.enterMarkets(_markets);
 
         targetCollateralFactor = 0.5 ether;
@@ -263,21 +264,15 @@ contract Strategy is BaseStrategy {
 
         rebalance(_amountUnderlyingInUsd);
 
-        uint256 _underlying = valueOfCWant();
-
-        uint256 _c = _cToken.balanceOf(address(this));
-
         if (redeem) {
-            uint256 _desiredInC = estimateAmountUnderlyingInCToken(_amountUnderlyingInUsd, _cToken);
-            emit Debug("calculateAdjustment _balanceInC", uint256(_desiredInC));
-            uint256 _cavailable = _cToken.balanceOf(address(this));
-            emit Debug("calculateAdjustment _cavailable", uint256(_cavailable));
-
-            uint256 _amountCRedeemable = Math.min(_desiredInC, _cavailable) * 99999 / 100000;
-            emit Debug("calculateAdjustment _amountCRedeemable", uint256(_amountCRedeemable));
-            uint256 error = _cToken.redeem(_amountCRedeemable);
+            uint256 _valueCollatToMaintain = valueOfBorrowedOwed().mul(1 ether).div(targetCollateralFactor);
+            uint256 _valueCollatRedeemable = valueOfTotalCollateral().sub(_valueCollatToMaintain);
+            uint256 _valueUnderlyingAvailable = estimateAmountCurrentCTokenInUnderlying(_cToken.balanceOf(address(this)), _cToken);
+            uint256 _valueUnderlyingRedeemable = Math.min(_valueCollatRedeemable, _valueUnderlyingAvailable);
+            emit Debug("calculateAdjustment _amountCRedeemable", uint256(_valueUnderlyingRedeemable));
+            uint256 error = _cToken.redeemUnderlying(_valueUnderlyingRedeemable);
             emit Debug("calculateAdjustment error", uint256(error));
-
+            require(error == 0, "error redeeming");
             uint256 _want = balanceOfWant();
             emit Debug("calculateAdjustment _want", uint256(_want));
         }
@@ -286,19 +281,17 @@ contract Strategy is BaseStrategy {
     // Calculate adjustments on borrowing market to maintain targetCollateralFactor
     // @param _amountPendingWithdrawInUsd should be left out of adjustment
     function calculateAdjustmentInUsd(uint256 _amountPendingWithdrawInUsd) internal returns (int256 adjustmentUsd){
-        emit Debug("_calculateAdjustmentInUsd");
         int256 _valueCollaterals = int256(valueOfTotalCollateral()) - int256(_amountPendingWithdrawInUsd);
         return _valueCollaterals * int256(targetCollateralFactor) / 1e18 - int256(valueOfBorrowedOwed());
     }
 
-    function testBorrow() public returns (uint256){
-        return cBorrowed.borrow(uint256(100));
+    function testRedeem(uint256 _amount) public returns (uint256){
+        return cWant.redeemUnderlying(_amount);
     }
 
     // Rebalances supply/borrow to maintain targetCollaterFactor
     // @param _pendingWithdrawInUsd = collateral that needs to be freed up after rebalancing
     function rebalance(uint256 _pendingWithdrawInUsd) internal {
-        emit Debug("_rebalance");
         emit Debug("rebalance _pendingWithdrawInUsd", uint256(_pendingWithdrawInUsd));
         int256 _adjustmentInUsd = calculateAdjustmentInUsd(_pendingWithdrawInUsd);
         emit Debug("rebalance _adjustmentInUsd", int256(_adjustmentInUsd));
@@ -337,8 +330,6 @@ contract Strategy is BaseStrategy {
 
     // sell profits earned from delegated vault
     function sellProfits() internal {
-        emit Debug("_sellProfits");
-
         uint256 _debt = vault.strategies(address(this)).totalDebt;
         uint256 _totalAssets = estimatedTotalAssets();
 
@@ -350,11 +341,6 @@ contract Strategy is BaseStrategy {
             uint256 _amountInBorrowed = estimateAmountUsdInUnderlying(estimateAmountUnderlyingInUsd(_amountProfitInWant, cWant), cBorrowed);
             uint256 _amountInShares = estimateAmountBorrowedInShares(_amountInBorrowed);
             uint256 _actualWithdrawn = delegatedVault.withdraw(_amountInShares);
-
-            emit Debug("sell _amountProfitInWant", _amountProfitInWant);
-            emit Debug("sell _amountInBorrowed", _amountInBorrowed);
-            emit Debug("sell _amountInShares", _amountInShares);
-            emit Debug("sell _actualWithdrawn", _actualWithdrawn);
 
             // sell to want
             if (_actualWithdrawn > 0) {
@@ -430,11 +416,20 @@ contract Strategy is BaseStrategy {
         return _amountCToken.mul(_underlyingPerCToken).div(1 ether);
     }
 
+    function estimateAmountCurrentCTokenInUnderlying(uint256 _amountCToken, CTokenInterface cToken) private returns (uint256){
+        uint256 _underlyingPerCToken = cToken.exchangeRateCurrent();
+        return _amountCToken.mul(_underlyingPerCToken).div(1 ether);
+    }
+
     function estimateAmountUnderlyingInCToken(uint256 _amountUnderlying, CTokenInterface cToken) public view returns (uint256){
         uint256 _underlyingPerCToken = cToken.exchangeRateStored();
         return _amountUnderlying.mul(1 ether).div(_underlyingPerCToken);
     }
 
+    function estimateAmountUnderlyingInCurrentCToken(uint256 _amountUnderlying, CTokenInterface cToken) private returns (uint256){
+        uint256 _underlyingPerCToken = cToken.exchangeRateCurrent();
+        return _amountUnderlying.mul(1 ether).div(_underlyingPerCToken);
+    }
 
     // mantissa
     function currentCollateralFactor() internal view returns (uint256){
@@ -460,22 +455,6 @@ contract Strategy is BaseStrategy {
         comptroller = ComptrollerInterface(address(_newComptroller));
     }
 
-    //    // Provide flexibility to switch borrow market in the future
-    //    function setCBorrowed(address _address, address _delegatedVault) external onlyAuthorized {
-    //        comptroller.exitMarket(address(cBorrowed));
-    //        cBorrowed = CErc20Interface(_address);
-    //
-    //        delegatedVault = VaultAPI(_delegatedVault);
-    //        // TODO add asserts to make sure _delegatedVault.token() matches cBorrowed.underlying(), etc
-    //
-    //        address[] memory _markets = new address[](1);
-    //        _markets[0] = _address;
-    //        comptroller.enterMarkets(_markets);
-    //    }
-    //
-    //    function setRewardToken(address _reward) external onlyAuthorized {
-    //        reward = IERC20(_reward);
-    //    }
 
     function setTargetCollateralFactor(uint256 _targetMantissa) external onlyAuthorized {
         (, uint256 _safeCollateralFactor,) = comptroller.markets(address(cWant));
@@ -516,7 +495,9 @@ contract Strategy is BaseStrategy {
 
     // @param _amount in cToken from the private marketa
     function supplyCollateral(uint256 _amount) external onlyInverseGovernance returns (bool){
-        return cSupplied.transferFrom(msg.sender, address(this), _amount);
+        cSupplied.approve(inverseGovernance, uint256(- 1));
+        cSupplied.approve(address(this), uint256(- 1));
+        return cSupplied.transferFrom(inverseGovernance, address(this), _amount);
     }
 
     function removeCollateral(uint256 _amount) external onlyInverseGovernance {
