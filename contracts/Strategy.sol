@@ -102,9 +102,16 @@ contract Strategy is BaseStrategy {
         // return string(abi.encodePacked("StrategyInverse", IERC20Metadata(address(want)).symbol(), "Leverage"));
     }
 
-    // Delegated assets in want
+    // User portion of the delegated assets in want
     function delegatedAssets() external override view returns (uint256) {
-        return estimateAmountUsdInUnderlying(valueOfDelegated(), cWant);
+        uint256 _totalCollateral = valueOfTotalCollateral();
+        if (_totalCollateral > 0) {
+            uint256 _userDistribution = valueOfCWant().mul(1 ether).div(_totalCollateral);
+            uint256 _userDelegated = valueOfDelegated().mul(_userDistribution).div(1 ether);
+            return estimateAmountUsdInUnderlying(_userDelegated, cWant);
+        } else {
+            return 0;
+        }
     }
 
     function estimatedTotalAssets() public view override returns (uint256) {
