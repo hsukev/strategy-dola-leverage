@@ -269,6 +269,16 @@ interface CErc20Interface is CTokenInterface {
     function _addReserves(uint addAmount) external returns (uint);
 }
 
+interface xInvCoreInterface is CTokenInterface {
+    function mint(uint mintAmount) external returns (uint);
+
+    function redeem(uint redeemTokens) external returns (uint);
+
+    function redeemUnderlying(uint redeemAmount) external returns (uint256);
+
+    function delegate(address delegatee) external;
+}
+
 
 interface CDelegatorInterface {
     /**

@@ -194,7 +194,7 @@ def test_sweep(gov, vault, strategy, token, user, amount, rook, rook_whale):
         strategy.sweep(strategy.borrowed(), {"from": gov})
         strategy.sweep(strategy.delegated(), {"from": gov})
         strategy.sweep(strategy.cWant(), {"from": gov})
-        strategy.sweep(strategy.cReward(), {"from": gov})
+        strategy.sweep(strategy.xInv(), {"from": gov})
         strategy.sweep(strategy.cSupplied(), {"from": gov})
 
     before_balance = rook.balanceOf(gov)

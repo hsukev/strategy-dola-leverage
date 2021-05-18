@@ -23,15 +23,17 @@ contract Strategy is BaseStrategy {
         _;
     }
 
+    uint private constant NO_ERROR = 0;
+
     IUniswapV2Router02 public router;
     VaultAPI public delegatedVault;
     ComptrollerInterface public comptroller;
     CErc20Interface public cWant;
     CEther public cBorrowed;
-    CErc20Interface public cSupplied; // private market for Yearn
-    CErc20Interface public cReward;
+    CErc20Interface public cSupplied; // private market for Yearn, panDola
+    xInvCoreInterface public xInv;
     IERC20 public borrowed;
-    IERC20 public reward;
+    IERC20 public reward; // INV
     IWETH9 constant public weth = IWETH9(address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2));
 
     address[] public path;
@@ -43,22 +45,19 @@ contract Strategy is BaseStrategy {
     uint256 public rewardEscrowPeriod = 14 days;
 
 
-    constructor(address _vault, address _cWant, address _cBorrowed, address _cReward, address _delegatedVault) public BaseStrategy(_vault) {
+    constructor(address _vault, address _cWant, address _cBorrowed, address _delegatedVault) public BaseStrategy(_vault) {
         delegatedVault = VaultAPI(_delegatedVault);
-        router = IUniswapV2Router02(address(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D));
-        comptroller = ComptrollerInterface(address(0x4dCf7407AE5C07f8681e1659f626E114A7667339));
-        inverseGovernance = 0x35d9f4953748b318f18c30634bA299b237eeDfff;
-        // TODO temporarily GovernorAlpha
-        cSupplied = CErc20Interface(0xD60B06B457bFf7fc38AC5E7eCE2b5ad16B288326);
-        // TODO temporarily Sushibar
+        router = IUniswapV2Router02(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
+        comptroller = ComptrollerInterface(0x4dCf7407AE5C07f8681e1659f626E114A7667339);
+        inverseGovernance = 0x35d9f4953748b318f18c30634bA299b237eeDfff; // TODO temporarily GovernorAlpha
+        cSupplied = CErc20Interface(0xD60B06B457bFf7fc38AC5E7eCE2b5ad16B288326); // TODO temporarily Sushibar
 
         cWant = CErc20Interface(_cWant);
         cBorrowed = CEther(_cBorrowed);
-        cReward = CErc20Interface(_cReward);
+        xInv = xInvCoreInterface(0x65b35d6Eb7006e0e607BC54EB2dFD459923476fE);
 
-        // TODO remove after testing, or when private market is out
         borrowed = IERC20(delegatedVault.token());
-        reward = IERC20(cReward.underlying());
+        reward = IERC20(0x41D5D79431A913C4aE7d69a668ecdfE5fF9DFB68); // INV
 
         require(cWant.underlying() != address(borrowed), "can't be delegating to your own vault");
         require(cWant.underlying() == address(want), "cWant does not match want");
@@ -68,10 +67,10 @@ contract Strategy is BaseStrategy {
 
         require(address(cWant) != address(cBorrowed), "want and borrowed markets can't be the same");
         require(address(cWant) != address(cSupplied), "want and supplied markets can't be the same");
-        require(address(cWant) != address(cReward), "want and reward markets can't be the same");
+        require(address(cWant) != address(xInv), "want and reward markets can't be the same");
         require(address(cBorrowed) != address(cSupplied), "borrowed and supplied markets can't be the same");
-        require(address(cBorrowed) != address(cReward), "borrowed and reward markets can't be the same");
-        require(address(cSupplied) != address(cReward), "supplied and reward markets can't be the same");
+        require(address(cBorrowed) != address(xInv), "borrowed and reward markets can't be the same");
+        require(address(cSupplied) != address(xInv), "supplied and reward markets can't be the same");
 
         path = [delegatedVault.token(), address(want)];
         wethWantPath = [address(weth), address(want)];
@@ -82,14 +81,15 @@ contract Strategy is BaseStrategy {
         _markets[2] = address(cSupplied);
         comptroller.enterMarkets(_markets);
 
-        targetCollateralFactor = 0.5 ether;
-        // 50%
-        collateralTolerance = 0.01 ether;
+        targetCollateralFactor = 0.5 ether; // 50%
+        collateralTolerance = 0.01 ether; // 1%
 
         want.safeApprove(address(cWant), uint256(- 1));
         borrowed.safeApprove(address(delegatedVault), uint256(- 1));
         weth.approve(address(this), uint256(- 1));
         weth.approve(address(router), uint256(- 1));
+
+        xInv.delegate(governance());
     }
 
 
@@ -162,12 +162,11 @@ contract Strategy is BaseStrategy {
         // just claim but don't sell
         comptroller.claimComp(address(this));
         emit Debug("_balanceOfReward", balanceOfReward());
-
     }
 
     function adjustPosition(uint256 _debtOutstanding) internal override {
-        assert(cWant.mint(balanceOfWant()) == 0);
-        assert(cReward.mint(balanceOfReward()) == 0);
+        assert(cWant.mint(balanceOfWant()) == NO_ERROR);
+        // assert(xInv.mint(balanceOfReward()) == NO_ERROR); // TODO: Uncomment when market becomes listed
 
         rebalance(0);
     }
@@ -210,7 +209,7 @@ contract Strategy is BaseStrategy {
         delegatedVault.transfer(_newStrategy, delegatedVault.balanceOf(address(this)));
 
         cWant.transfer(_newStrategy, cWant.balanceOf(address(this)));
-        cReward.transfer(_newStrategy, cReward.balanceOf(address(this)));
+        // xInv.transfer(_newStrategy, xInv.balanceOf(address(this))); // TODO: can't transfer xINV. must redeem for INV and wait 14 days in escrow before transfering it.
         cSupplied.transfer(_newStrategy, cSupplied.balanceOf(address(this)));
     }
 
@@ -220,7 +219,7 @@ contract Strategy is BaseStrategy {
         protected[1] = address(borrowed);
         protected[2] = address(delegatedVault);
         protected[3] = address(cWant);
-        protected[4] = address(cReward);
+        protected[4] = address(xInv);
         protected[5] = address(cSupplied);
         return protected;
     }
@@ -246,8 +245,8 @@ contract Strategy is BaseStrategy {
         uint256 supplyRate2 = cSupplied.supplyRatePerBlock();
         uint256 collateralisedDeposit2 = valueOfCSupplied().mul(collateralFactorMantissa).div(1e18);
 
-        uint256 supplyRate3 = cReward.supplyRatePerBlock();
-        uint256 collateralisedDeposit3 = valueOfCReward().mul(collateralFactorMantissa).div(1e18);
+        uint256 supplyRate3 = xInv.supplyRatePerBlock();
+        uint256 collateralisedDeposit3 = valueOfxInv().mul(collateralFactorMantissa).div(1e18);
 
         uint256 borrowBalance = valueOfBorrowedOwed();
         uint256 borrrowRate = cBorrowed.borrowRatePerBlock();
@@ -311,7 +310,7 @@ contract Strategy is BaseStrategy {
             uint256 _adjustmentInBorrowed = estimateAmountUsdInUnderlying(uint256(_adjustmentInUsd), cBorrowed);
             emit Debug("rebalance _adjustmentInBorrowed", uint256(_adjustmentInBorrowed));
 
-            assert(cBorrowed.borrow(_adjustmentInBorrowed) == 0);
+            assert(cBorrowed.borrow(_adjustmentInBorrowed) == NO_ERROR);
             uint256 _actualBorrowed = address(this).balance;
 
             // wrap ether
@@ -372,7 +371,7 @@ contract Strategy is BaseStrategy {
         return address(this).balance;
     }
 
-    function balanceOfUnderlying(CErc20Interface cToken) public view returns (uint256){
+    function balanceOfUnderlying(CTokenInterface cToken) public view returns (uint256){
         return estimateAmountCTokenInUnderlying(cToken.balanceOf(address(this)), cToken);
     }
 
@@ -387,12 +386,12 @@ contract Strategy is BaseStrategy {
     }
 
     // Value of reward tokens in USD
-    function valueOfCReward() public view returns (uint256){
-        return estimateAmountUnderlyingInUsd(balanceOfUnderlying(cReward), cReward);
+    function valueOfxInv() public view returns (uint256){
+        return estimateAmountUnderlyingInUsd(balanceOfUnderlying(xInv), xInv);
     }
 
     function valueOfTotalCollateral() public view returns (uint256){
-        return valueOfCWant().add(valueOfCSupplied()).add(valueOfCReward());
+        return valueOfCWant().add(valueOfCSupplied()).add(valueOfxInv());
     }
 
     // Value of borrowed tokens in USD
@@ -446,16 +445,6 @@ contract Strategy is BaseStrategy {
         return valueOfBorrowedOwed().mul(1 ether).div(valueOfTotalCollateral());
     }
 
-    // unwind reward so it can be delegated for voting or sent to yearn gov
-    function delegateRewardsTo(address _address) external onlyGovernance {
-        // TODO: fix to correct start of escrow
-        require(now.sub(0) > rewardEscrowPeriod, "Rewards are still in escrow!");
-
-        safeUnwindCTokenUnderlying(balanceOfUnderlying(cReward), cReward, true);
-        balanceOfReward();
-        // TODO delegate or transfer? Not sure how vote delgation works
-    }
-
 
     //
     // Setters
@@ -464,7 +453,6 @@ contract Strategy is BaseStrategy {
     function setComptroller(address _newComptroller) external onlyAuthorized {
         comptroller = ComptrollerInterface(address(_newComptroller));
     }
-
 
     function setTargetCollateralFactor(uint256 _targetMantissa) external onlyAuthorized {
         (, uint256 _safeCollateralFactor,) = comptroller.markets(address(cWant));
@@ -475,12 +463,16 @@ contract Strategy is BaseStrategy {
         rebalance(0);
     }
 
-    function setRouter(address _uniswapV2Router) external onlyGovernance {
-        router = IUniswapV2Router02(address(_uniswapV2Router));
+    function setRouter(address _address) external onlyGovernance {
+        router = IUniswapV2Router02(_address);
     }
 
     function setCollateralTolerance(uint256 _toleranceMantissa) external onlyGovernance {
         collateralTolerance = _toleranceMantissa;
+    }
+
+    function setInvDelegate(address _address) external onlyGovernance {
+        xInv.delegate(_address);
     }
 
     //

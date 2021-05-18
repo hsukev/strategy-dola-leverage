@@ -83,8 +83,8 @@ def vault(pm, gov, rewards, guardian, management, token):
 
 
 @pytest.fixture
-def strategy(strategist, keeper, vault, Strategy, gov, cWant, cBorrowed, cReward, delegatedVault, cSupplied):
-    strategy = strategist.deploy(Strategy, vault, cWant, cBorrowed, cReward, delegatedVault)
+def strategy(strategist, keeper, vault, Strategy, gov, cWant, cBorrowed, delegatedVault, cSupplied):
+    strategy = strategist.deploy(Strategy, vault, cWant, cBorrowed, delegatedVault)
     strategy.setKeeper(keeper, {"from": strategist})
     vault.addStrategy(strategy, 10_000, 0, 2 ** 256 - 1, 1_000, {"from": gov})
     yield strategy
@@ -111,12 +111,6 @@ def cSupplied_whale(accounts):
 @pytest.fixture
 def cBorrowed():
     token_address = "0x697b4acAa24430F254224eB794d2a85ba1Fa1FB8"  # anETH
-    yield Contract(token_address)
-
-
-@pytest.fixture
-def cReward():
-    token_address = "0xde2af899040536884e062D3a334F2dD36F34b4a4"  # anYFI
     yield Contract(token_address)
 
 
