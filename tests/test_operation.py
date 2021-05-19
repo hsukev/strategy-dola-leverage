@@ -189,6 +189,44 @@ def test_change_debt(
     assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == half
 
 
+def test_change_debt_with_injection(
+        gov, token, vault, strategy, user, strategist, amount, RELATIVE_APPROX, cSupplied, cSupply_amount, inverseGov
+):
+    # Inject cSupplied
+    cSupplied.approve(strategy, 2 ** 256 - 1, {"from": inverseGov})
+    print('before injection')
+    util.stateOfStrat(strategy, token)
+    strategy.supplyCollateral(cSupply_amount, {"from": inverseGov})
+
+    # Deposit to the vault and harvest
+    token.approve(vault.address, amount, {"from": user})
+    vault.deposit(amount, {"from": user})
+    vault.updateStrategyDebtRatio(strategy.address, 5_000, {"from": gov})
+    strategy.harvest()
+
+    print('debtRatio 5000')
+    util.stateOfStrat(strategy, token)
+
+    half = int(amount / 2)
+
+    assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == half
+
+    vault.updateStrategyDebtRatio(strategy.address, 10_000, {"from": gov})
+    strategy.harvest()
+
+    print('debtRatio 10000')
+    util.stateOfStrat(strategy, token)
+    assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
+
+    # In order to pass this tests, you will need to implement prepareReturn.
+    vault.updateStrategyDebtRatio(strategy.address, 5_000, {"from": gov})
+    strategy.harvest()
+
+    print('debtRatio 5000')
+    util.stateOfStrat(strategy, token)
+    assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == half
+
+
 def test_sweep(gov, vault, strategy, token, user, amount, rook, rook_whale):
     # Strategy want token doesn't work
     token.transfer(strategy, amount, {"from": user})

@@ -49,10 +49,8 @@ contract Strategy is BaseStrategy {
         delegatedVault = VaultAPI(_delegatedVault);
         router = IUniswapV2Router02(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
         comptroller = ComptrollerInterface(0x4dCf7407AE5C07f8681e1659f626E114A7667339);
-        inverseGovernance = 0x35d9f4953748b318f18c30634bA299b237eeDfff;
-        // TODO temporarily GovernorAlpha
-        cSupplied = CErc20Interface(0xD60B06B457bFf7fc38AC5E7eCE2b5ad16B288326);
-        // TODO temporarily Sushibar
+        inverseGovernance = 0x35d9f4953748b318f18c30634bA299b237eeDfff; // TODO temporarily GovernorAlpha
+        cSupplied = CErc20Interface(0xD60B06B457bFf7fc38AC5E7eCE2b5ad16B288326); // TODO temporarily Sushibar
 
         cWant = CErc20Interface(_cWant);
         cBorrowed = CEther(_cBorrowed);
