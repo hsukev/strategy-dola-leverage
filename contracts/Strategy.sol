@@ -43,6 +43,7 @@ contract Strategy is BaseStrategy {
     uint256 public collateralTolerance;
     uint256 public blocksToLiquidationDangerZone = uint256(7 days) / 13; // assuming 13 second block times
     uint256 public rewardEscrowPeriod = 14 days;
+    uint256 public borrowLimit = 10 ether; // TODO set this to something sane.
 
 
     constructor(address _vault, address _cWant, address _cBorrowed, address _delegatedVault) public BaseStrategy(_vault) {
@@ -298,13 +299,21 @@ contract Strategy is BaseStrategy {
         }
     }
 
-    // Calculate adjustments on borrowing market to maintain targetCollateralFactor
+    // Calculate adjustments on borrowing market to maintain targetCollateralFactor and borrowLimit
     // @param _amountPendingWithdrawInUsd should be left out of adjustment
     function calculateAdjustmentInUsd(uint256 _amountPendingWithdrawInUsd) internal returns (int256 adjustmentUsd){
         int256 _valueCollaterals = int256(valueOfTotalCollateral()) - int256(_amountPendingWithdrawInUsd);
-        return _valueCollaterals * int256(targetCollateralFactor) / 1e18 - int256(valueOfBorrowedOwed());
+        int256 _borrowTargetUsd = _valueCollaterals * int256(targetCollateralFactor) / 1e18;
+
+        int256 _borrowLimitUsd = int256(estimateAmountUnderlyingInUsd(borrowLimit, cBorrowed));
+        if (_borrowLimitUsd < _borrowTargetUsd) {
+            _borrowTargetUsd = _borrowLimitUsd;
+        }
+
+        return _borrowTargetUsd - int256(valueOfBorrowedOwed());
     }
 
+    // TODO: delete this when ready
     function testRedeem(uint256 _amount) public returns (uint256){
         return cWant.redeemUnderlying(_amount);
     }
@@ -474,6 +483,10 @@ contract Strategy is BaseStrategy {
 
     function setInvDelegate(address _address) external onlyGovernance {
         xInv.delegate(_address);
+    }
+
+    function setBorrowLimit(uint256 _borrowLimit) external onlyAuthorized {
+        borrowLimit = _borrowLimit;
     }
 
     //
