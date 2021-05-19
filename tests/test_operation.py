@@ -21,7 +21,9 @@ def test_immediate_operation(cWant, chain,
 
     # withdrawal
     vault.withdraw({"from": user})
-    assert (pytest.approx(token.balanceOf(user), rel=RELATIVE_APPROX) == user_balance_before)
+    user_balance_after = token.balanceOf(user)
+    assert (pytest.approx(user_balance_after, rel=RELATIVE_APPROX) == user_balance_before)
+    print("loss: ", (user_balance_before - user_balance_after)/1e18)
 
 
 def test_operation(cWant, chain,

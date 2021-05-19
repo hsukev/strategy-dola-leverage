@@ -49,15 +49,18 @@ contract Strategy is BaseStrategy {
         delegatedVault = VaultAPI(_delegatedVault);
         router = IUniswapV2Router02(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
         comptroller = ComptrollerInterface(0x4dCf7407AE5C07f8681e1659f626E114A7667339);
-        inverseGovernance = 0x35d9f4953748b318f18c30634bA299b237eeDfff; // TODO temporarily GovernorAlpha
-        cSupplied = CErc20Interface(0xD60B06B457bFf7fc38AC5E7eCE2b5ad16B288326); // TODO temporarily Sushibar
+        inverseGovernance = 0x35d9f4953748b318f18c30634bA299b237eeDfff;
+        // TODO temporarily GovernorAlpha
+        cSupplied = CErc20Interface(0xD60B06B457bFf7fc38AC5E7eCE2b5ad16B288326);
+        // TODO temporarily Sushibar
 
         cWant = CErc20Interface(_cWant);
         cBorrowed = CEther(_cBorrowed);
         xInv = xInvCoreInterface(0x65b35d6Eb7006e0e607BC54EB2dFD459923476fE);
 
         borrowed = IERC20(delegatedVault.token());
-        reward = IERC20(0x41D5D79431A913C4aE7d69a668ecdfE5fF9DFB68); // INV
+        reward = IERC20(0x41D5D79431A913C4aE7d69a668ecdfE5fF9DFB68);
+        // INV
 
         require(cWant.underlying() != address(borrowed), "can't be delegating to your own vault");
         require(cWant.underlying() == address(want), "cWant does not match want");
@@ -81,8 +84,10 @@ contract Strategy is BaseStrategy {
         _markets[2] = address(cSupplied);
         comptroller.enterMarkets(_markets);
 
-        targetCollateralFactor = 0.5 ether; // 50%
-        collateralTolerance = 0.01 ether; // 1%
+        targetCollateralFactor = 0.5 ether;
+        // 50%
+        collateralTolerance = 0.01 ether;
+        // 1%
 
         want.safeApprove(address(cWant), uint256(- 1));
         borrowed.safeApprove(address(delegatedVault), uint256(- 1));
@@ -264,20 +269,28 @@ contract Strategy is BaseStrategy {
         }
     }
 
-    // free up _amountUnderlying worth of borrowed while maintaining targetCollateralRatio
+    // free up _amountUnderlying worth of borrowed while maintaining targetCollateralRatio.
+    // function will try to free up as much as it can safely
     // @param redeem: True will redeem to cToken.underlying. False will remain as cToken
     function safeUnwindCTokenUnderlying(uint256 _amountUnderlying, CErc20Interface _cToken, bool redeem) internal {
         emit Debug("_safeUnwindCTokenUnderlying");
-
+        _cToken.accrueInterest();
         uint256 _amountUnderlyingInUsd = estimateAmountUnderlyingInUsd(_amountUnderlying, _cToken);
 
         rebalance(_amountUnderlyingInUsd);
+        // cTokens are now freed up
 
         if (redeem) {
             uint256 _valueCollatToMaintain = valueOfBorrowedOwed().mul(1 ether).div(targetCollateralFactor);
             uint256 _valueCollatRedeemable = valueOfTotalCollateral().sub(_valueCollatToMaintain);
-            uint256 _valueUnderlyingAvailable = estimateAmountCurrentCTokenInUnderlying(_cToken.balanceOf(address(this)), _cToken);
-            uint256 _valueUnderlyingRedeemable = Math.min(_valueCollatRedeemable, _valueUnderlyingAvailable);
+            uint256 _amountCollatRedeemableInUnderlying = estimateAmountUsdInUnderlying(_valueCollatRedeemable, _cToken);
+            uint256 _amountCTokenInUnderlying = estimateAmountCTokenInUnderlying(_cToken.balanceOf(address(this)), _cToken);
+            uint256 _amountMarketCashInUnderlying = _cToken.getCash();
+
+            // min of (market's cash available, safe amount redeemable for strat, cToken as underlying in strat)
+            uint256 _valueUnderlyingRedeemable = Math.min(_amountCollatRedeemableInUnderlying, _amountCTokenInUnderlying);
+            _valueUnderlyingRedeemable = Math.min(_valueUnderlyingRedeemable, _amountMarketCashInUnderlying);
+
             emit Debug("calculateAdjustment _amountCRedeemable", uint256(_valueUnderlyingRedeemable));
             uint256 error = _cToken.redeemUnderlying(_valueUnderlyingRedeemable);
             emit Debug("calculateAdjustment error", uint256(error));
@@ -425,18 +438,8 @@ contract Strategy is BaseStrategy {
         return _amountCToken.mul(_underlyingPerCToken).div(1 ether);
     }
 
-    function estimateAmountCurrentCTokenInUnderlying(uint256 _amountCToken, CTokenInterface cToken) private returns (uint256){
-        uint256 _underlyingPerCToken = cToken.exchangeRateCurrent();
-        return _amountCToken.mul(_underlyingPerCToken).div(1 ether);
-    }
-
     function estimateAmountUnderlyingInCToken(uint256 _amountUnderlying, CTokenInterface cToken) public view returns (uint256){
         uint256 _underlyingPerCToken = cToken.exchangeRateStored();
-        return _amountUnderlying.mul(1 ether).div(_underlyingPerCToken);
-    }
-
-    function estimateAmountUnderlyingInCurrentCToken(uint256 _amountUnderlying, CTokenInterface cToken) private returns (uint256){
-        uint256 _underlyingPerCToken = cToken.exchangeRateCurrent();
         return _amountUnderlying.mul(1 ether).div(_underlyingPerCToken);
     }
 
