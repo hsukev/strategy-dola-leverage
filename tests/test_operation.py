@@ -1,6 +1,7 @@
 import brownie
 from brownie import Contract, Wei
 import pytest
+import util
 
 
 def test_immediate_operation(cWant, chain,
@@ -23,7 +24,7 @@ def test_immediate_operation(cWant, chain,
     vault.withdraw({"from": user})
     user_balance_after = token.balanceOf(user)
     assert (pytest.approx(user_balance_after, rel=RELATIVE_APPROX) == user_balance_before)
-    print("loss: ", (user_balance_before - user_balance_after)/1e18)
+    print("loss: ", (user_balance_before - user_balance_after) / 1e18)
 
 
 def test_operation(cWant, chain,
@@ -126,10 +127,15 @@ def test_profitable_harvest_with_collateral_injection(accounts, token, vault, we
     assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
 
     cSupplied.approve(strategy, 2 ** 256 - 1, {"from": inverseGov})
+
+    print('before injection')
+    util.stateOfStrat(strategy, token)
     strategy.supplyCollateral(cSupply_amount, {"from": inverseGov})
 
     assert strategy.valueOfCSupplied() > 0
 
+    print('after injection')
+    util.stateOfStrat(strategy, token)
     # increase rewards, lending interest and borrowing interests
     # assets_before = vault.totalAssets()
     chain.sleep(30 * 24 * 3600)  # 30 days
@@ -151,8 +157,13 @@ def test_profitable_harvest_with_collateral_injection(accounts, token, vault, we
     assert strategy.estimatedTotalAssets() + profit > amount
     assert vault.pricePerShare() > before_pps
     assert vault.totalAssets() > amount
+    print('before removed')
+    util.stateOfStrat(strategy, token)
 
     strategy.removeCollateral(cSupply_amount, {"from": inverseGov})
+
+    print('after removed')
+    util.stateOfStrat(strategy, token)
     assert cSupplied.balanceOf(inverseGov) == cSupply_amount
 
 
