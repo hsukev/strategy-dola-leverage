@@ -91,6 +91,8 @@ interface ComptrollerInterface {
 
     function markets(address cToken) external view returns (bool isListed, uint256 collatFactorMantissa, bool isComped);
 
+    function compAccrued(address holder) external view returns (uint256 amount);
+
     function claimComp(address holder) external;
 }
 
@@ -277,6 +279,8 @@ interface xInvCoreInterface is CTokenInterface {
     function redeemUnderlying(uint redeemAmount) external returns (uint256);
 
     function delegate(address delegatee) external;
+
+    function escrow() external view returns (address);
 }
 
 
@@ -329,4 +333,8 @@ interface InterestRateModel {
       */
     function getSupplyRate(uint cash, uint borrows, uint reserves, uint reserveFactorMantissa) external view returns (uint);
 
+}
+
+interface TimelockEscrowInterface {
+    function withdraw() external;
 }

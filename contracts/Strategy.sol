@@ -28,33 +28,37 @@ contract Strategy is BaseStrategy {
     IUniswapV2Router02 public router;
     VaultAPI public delegatedVault;
     ComptrollerInterface public comptroller;
+
     CErc20Interface public cWant;
     CEther public cBorrowed;
     CErc20Interface public cSupplied; // private market for Yearn, panDola
     xInvCoreInterface public xInv;
+
     IERC20 public borrowed;
     IERC20 public reward; // INV
     IWETH9 constant public weth = IWETH9(address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2));
 
     address[] public path;
     address[] public wethWantPath;
+
     address public inverseGovernance;
     uint256 public targetCollateralFactor;
     uint256 public collateralTolerance;
     uint256 public rewardEscrowPeriod = 14 days;
-    uint256 public borrowLimit = 10 ether; // TODO set this to something sane.
+    uint256 public borrowLimit = 0; // borrow nothing until set
 
 
     constructor(address _vault, address _cWant, address _cBorrowed, address _delegatedVault) public BaseStrategy(_vault) {
+        inverseGovernance = 0x35d9f4953748b318f18c30634bA299b237eeDfff; // TODO temporarily GovernorAlpha
+
         delegatedVault = VaultAPI(_delegatedVault);
         router = IUniswapV2Router02(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
         comptroller = ComptrollerInterface(0x4dCf7407AE5C07f8681e1659f626E114A7667339);
-        inverseGovernance = 0x35d9f4953748b318f18c30634bA299b237eeDfff; // TODO temporarily GovernorAlpha
-        cSupplied = CErc20Interface(0xD60B06B457bFf7fc38AC5E7eCE2b5ad16B288326); // TODO temporarily Sushibar
 
         cWant = CErc20Interface(_cWant);
         cBorrowed = CEther(_cBorrowed);
         xInv = xInvCoreInterface(0x65b35d6Eb7006e0e607BC54EB2dFD459923476fE);
+        cSupplied = CErc20Interface(0xD60B06B457bFf7fc38AC5E7eCE2b5ad16B288326); // TODO temporarily Sushibar
 
         borrowed = IERC20(delegatedVault.token());
         reward = IERC20(0x41D5D79431A913C4aE7d69a668ecdfE5fF9DFB68); // INV
@@ -81,17 +85,15 @@ contract Strategy is BaseStrategy {
         _markets[2] = address(cSupplied);
         comptroller.enterMarkets(_markets);
 
-        targetCollateralFactor = 0.5 ether;
-        // 50%
-        collateralTolerance = 0.01 ether;
-        // 1%
+        targetCollateralFactor = 0.5 ether; // 50%
+        collateralTolerance = 0.01 ether; // 1%
 
-        want.safeApprove(address(cWant), uint256(- 1));
-        borrowed.safeApprove(address(delegatedVault), uint256(- 1));
-        weth.approve(address(this), uint256(- 1));
-        weth.approve(address(router), uint256(- 1));
+        want.safeApprove(address(cWant), uint256(-1));
+        borrowed.safeApprove(address(delegatedVault), uint256(-1));
+        weth.approve(address(this), uint256(-1));
+        weth.approve(address(router), uint256(-1));
 
-        xInv.delegate(governance());
+        xInv.delegate(governance()); // delegate voting power to yearn gov
     }
 
 
@@ -161,8 +163,9 @@ contract Strategy is BaseStrategy {
         emit Debug("_profit", _profit);
         emit Debug("_debtPayment", _debtPayment);
 
-        // just claim but don't sell
-        comptroller.claimComp(address(this));
+        if (comptroller.compAccrued(address(this)) > 0) {
+            comptroller.claimComp(address(this)); // claim but don't sell
+        }
         emit Debug("_balanceOfReward", balanceOfReward());
     }
 
@@ -202,7 +205,7 @@ contract Strategy is BaseStrategy {
     }
 
     function prepareMigration(address _newStrategy) internal override {
-        // borrowed position can't be transferred so needs to unwind everything and pay it off before migrating
+        // borrowed position can't be transferred so need to unwind everything before migrating
         liquidatePosition(estimatedTotalAssets());
 
         reward.transfer(_newStrategy, balanceOfReward());
@@ -212,8 +215,8 @@ contract Strategy is BaseStrategy {
         cWant.transfer(_newStrategy, cWant.balanceOf(address(this)));
         cSupplied.transfer(_newStrategy, cSupplied.balanceOf(address(this)));
 
-        // can't transfer xINV. must redeem for INV and wait 14 days in escrow before transfering it.
-        // gov to use sweep after escrow period.
+        // can't transfer xINV. must redeem for INV and wait 14 days before withdrawing it from escrow.
+        // gov to use withdrawEscrowedRewards() then sweep() after escrow period.
         xInv.redeem(xInv.balanceOf(address(this)));
     }
 
@@ -277,11 +280,6 @@ contract Strategy is BaseStrategy {
         }
 
         return _borrowTargetUsd - int256(valueOfBorrowedOwed());
-    }
-
-    // TODO: delete this when ready
-    function testRedeem(uint256 _amount) public returns (uint256){
-        return cWant.redeemUnderlying(_amount);
     }
 
     // Rebalances supply/borrow to maintain targetCollaterFactor
@@ -419,6 +417,12 @@ contract Strategy is BaseStrategy {
     // mantissa
     function currentCollateralFactor() internal view returns (uint256){
         return valueOfBorrowedOwed().mul(1 ether).div(valueOfTotalCollateral());
+    }
+
+    // used after a migration to redeem escrowed INV tokens that can then be swept by gov
+    function withdrawEscrowedRewards() external onlyAuthorized {
+        TimelockEscrowInterface _timelockEscrow = TimelockEscrowInterface(xInv.escrow());
+        _timelockEscrow.withdraw();
     }
 
 
