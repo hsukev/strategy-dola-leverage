@@ -227,7 +227,7 @@ def test_change_debt_with_injection(
     assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == half
 
 
-def test_sweep(gov, vault, strategy, token, user, amount, rook, rook_whale):
+def test_sweep(gov, vault, strategy, token, user, amount, inv, inv_whale, rook, rook_whale):
     # Strategy want token doesn't work
     token.transfer(strategy, amount, {"from": user})
     assert token.address == strategy.want()
@@ -241,19 +241,25 @@ def test_sweep(gov, vault, strategy, token, user, amount, rook, rook_whale):
 
     # Protected token doesn't work
     with brownie.reverts("!protected"):
-        strategy.sweep(strategy.reward(), {"from": gov})
         strategy.sweep(strategy.borrowed(), {"from": gov})
         strategy.sweep(strategy.delegated(), {"from": gov})
         strategy.sweep(strategy.cWant(), {"from": gov})
         strategy.sweep(strategy.xInv(), {"from": gov})
         strategy.sweep(strategy.cSupplied(), {"from": gov})
 
-    before_balance = rook.balanceOf(gov)
-    rook_amount = 10 * 10 ** 18
+    inv_before_balance = rook.balanceOf(gov)
+    inv_amount = 10 * 1e18
+    inv.transfer(strategy, inv_amount, {"from": inv_whale})
+    assert inv.address != strategy.want()
+    strategy.sweep(inv, {"from": gov})
+    assert inv.balanceOf(gov) == inv_amount + inv_before_balance
+
+    rook_before_balance = rook.balanceOf(gov)
+    rook_amount = 10 * 1e18
     rook.transfer(strategy, rook_amount, {"from": rook_whale})
     assert rook.address != strategy.want()
     strategy.sweep(rook, {"from": gov})
-    assert rook.balanceOf(gov) == rook_amount + before_balance
+    assert rook.balanceOf(gov) == rook_amount + rook_before_balance
 
 
 def test_triggers(

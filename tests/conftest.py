@@ -113,6 +113,13 @@ def cBorrowed():
     token_address = "0x697b4acAa24430F254224eB794d2a85ba1Fa1FB8"  # anETH
     yield Contract(token_address)
 
+@pytest.fixture
+def inv():
+    yield Contract("0x41d5d79431a913c4ae7d69a668ecdfe5ff9dfb68")
+
+@pytest.fixture
+def inv_whale(accounts):
+    yield accounts.at("0x926dF14a23BE491164dCF93f4c468A50ef659D5B", force=True) # Inverse Timelock
 
 @pytest.fixture
 def rook():

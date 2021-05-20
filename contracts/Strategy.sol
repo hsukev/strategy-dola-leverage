@@ -58,8 +58,7 @@ contract Strategy is BaseStrategy {
         xInv = xInvCoreInterface(0x65b35d6Eb7006e0e607BC54EB2dFD459923476fE);
 
         borrowed = IERC20(delegatedVault.token());
-        reward = IERC20(0x41D5D79431A913C4aE7d69a668ecdfE5fF9DFB68);
-        // INV
+        reward = IERC20(0x41D5D79431A913C4aE7d69a668ecdfE5fF9DFB68); // INV
 
         require(cWant.underlying() != address(borrowed), "can't be delegating to your own vault");
         require(cWant.underlying() == address(want), "cWant does not match want");
@@ -213,18 +212,20 @@ contract Strategy is BaseStrategy {
         delegatedVault.transfer(_newStrategy, delegatedVault.balanceOf(address(this)));
 
         cWant.transfer(_newStrategy, cWant.balanceOf(address(this)));
-        // xInv.transfer(_newStrategy, xInv.balanceOf(address(this))); // TODO: can't transfer xINV. must redeem for INV and wait 14 days in escrow before transfering it.
         cSupplied.transfer(_newStrategy, cSupplied.balanceOf(address(this)));
+
+        // can't transfer xINV. must redeem for INV and wait 14 days in escrow before transfering it.
+        // gov to use sweep after escrow period.
+        xInv.redeem(xInv.balanceOf(address(this)));
     }
 
     function protectedTokens() internal view override returns (address[] memory){
         address[] memory protected = new address[](6);
-        protected[0] = address(reward);
-        protected[1] = address(borrowed);
-        protected[2] = address(delegatedVault);
-        protected[3] = address(cWant);
-        protected[4] = address(xInv);
-        protected[5] = address(cSupplied);
+        protected[0] = address(borrowed);
+        protected[1] = address(delegatedVault);
+        protected[2] = address(cWant);
+        protected[3] = address(xInv);
+        protected[4] = address(cSupplied);
         return protected;
     }
 
