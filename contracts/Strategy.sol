@@ -386,6 +386,10 @@ contract Strategy is BaseStrategy {
             uint256 _amountInShares = estimateAmountBorrowedInShares(_amountInBorrowed);
             uint256 _actualWithdrawn = delegatedVault.withdraw(_amountInShares);
 
+            if (_amountInShares > delegatedVault.balanceOf(address(this))) {
+                // max uint256 is uniquely set to withdraw everything
+                _amountInShares = uint256(- 1);
+            }
             // sell to want
             if (_actualWithdrawn > 0) {
                 router.swapExactTokensForTokens(_actualWithdrawn, 0, path, address(this), now);
