@@ -238,6 +238,7 @@ def test_borrow_limit(token, vault, cBorrowed, strategy, user, strategist, amoun
     assert strategy.valueOfDelegated() == 0
 
     strategy.tend({"from": strategist})
+    assert cBorrowed.borrowBalanceStored(strategy) == 0
     assert strategy.valueOfBorrowedOwed() == 0
     assert strategy.valueOfDelegated() == 0
 
@@ -257,6 +258,13 @@ def test_borrow_limit(token, vault, cBorrowed, strategy, user, strategist, amoun
     strategy.tend({"from": strategist})
     assert pytest.approx(cBorrowed.borrowBalanceStored(strategy), rel=RELATIVE_APPROX) == half_borrowed_amount
     assert pytest.approx(strategy.valueOfBorrowedOwed(), rel=RELATIVE_APPROX) == half_borrowed_value
+
+    # disable borrowing
+    strategy.setBorrowLimit(0, {"from": strategist})
+    strategy.tend({"from": strategist})
+    assert strategy.valueOfDelegated() == 0
+    assert cBorrowed.borrowBalanceStored(strategy) == 0
+    assert strategy.valueOfBorrowedOwed() == 0
 
 
 def test_sweep(gov, vault, strategy, token, user, amount, inv, inv_whale, rook, rook_whale):
