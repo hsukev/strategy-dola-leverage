@@ -46,7 +46,7 @@ contract Strategy is BaseStrategy {
     uint256 public collateralTolerance;
     uint256 public blocksToLiquidationDangerZone = uint256(7 days) / 13; // assuming 13 second block times
     uint256 public rewardEscrowPeriod = 14 days;
-    uint256 public borrowLimit = 2**128 - 1; // TODO: set to 0, borrow nothing until set
+    uint256 public borrowLimit = 0; // TODO: set to 0, borrow nothing until set
 
 
     constructor(address _vault, address _cWant, address _cBorrowed, address _delegatedVault) public BaseStrategy(_vault) {
@@ -165,7 +165,7 @@ contract Strategy is BaseStrategy {
         emit Debug("_debtPayment", _debtPayment);
 
         if (comptroller.compAccrued(address(this)) > 0) {
-            comptroller.claimComp(address(this)); // claim but don't sell
+            //            comptroller.claimComp(address(this)); // claim but don't sell
         }
         emit Debug("_balanceOfReward", balanceOfReward());
     }
@@ -183,13 +183,13 @@ contract Strategy is BaseStrategy {
 
             uint256 _desiredWithdraw = _amountNeeded.sub(looseBalance);
             safeUnwindCTokenUnderlying(_desiredWithdraw, cWant, true);
-            uint256 newLooseBalance = balanceOfWant();
-            emit Debug("_liquidatePosition newLooseBalance", newLooseBalance);
+            uint256 _newLooseBalance = balanceOfWant();
+            emit Debug("_liquidatePosition newLooseBalance", _newLooseBalance);
+            emit Debug("_liquidatePosition _amountNeeded", _amountNeeded);
 
-            _liquidatedAmount = newLooseBalance;
-            if (_amountNeeded > newLooseBalance) {
-
-                _loss = _amountNeeded.sub(newLooseBalance);
+            _liquidatedAmount = Math.min(_amountNeeded, _newLooseBalance);
+            if (_amountNeeded > _newLooseBalance) {
+                _loss = _amountNeeded.sub(_newLooseBalance);
                 emit Debug("_liquidatePosition _loss", _loss);
             }
         } else {
@@ -263,7 +263,7 @@ contract Strategy is BaseStrategy {
         uint256 denom2 = collateralisedDeposit1.mul(supplyRate1).add(collateralisedDeposit2.mul(supplyRate2)).add(collateralisedDeposit3.mul(supplyRate3));
 
         if (denom2 >= denom1) {
-            return uint256(-1);
+            return uint256(- 1);
         } else {
             uint256 numer = collateralisedDeposit1.add(collateralisedDeposit2).add(collateralisedDeposit3).sub(borrowBalance);
             uint256 denom = denom1 - denom2;
@@ -384,12 +384,14 @@ contract Strategy is BaseStrategy {
             uint256 _amountProfitInWant = _totalAssets.sub(_debt);
             uint256 _amountInBorrowed = estimateAmountUsdInUnderlying(estimateAmountUnderlyingInUsd(_amountProfitInWant, cWant), cBorrowed);
             uint256 _amountInShares = estimateAmountBorrowedInShares(_amountInBorrowed);
-            uint256 _actualWithdrawn = delegatedVault.withdraw(_amountInShares);
+            emit Debug("sell _amountInShares", _amountInShares);
 
             if (_amountInShares > delegatedVault.balanceOf(address(this))) {
                 // max uint256 is uniquely set to withdraw everything
                 _amountInShares = uint256(- 1);
             }
+            uint256 _actualWithdrawn = delegatedVault.withdraw(_amountInShares);
+            emit Debug("sell _actualWithdrawn", _actualWithdrawn);
             // sell to want
             if (_actualWithdrawn > 0) {
                 router.swapExactTokensForTokens(_actualWithdrawn, 0, path, address(this), now);
@@ -536,8 +538,8 @@ contract Strategy is BaseStrategy {
 
     // @param _amount in cToken from the private marketa
     function supplyCollateral(uint256 _amount) external onlyInverseGovernance returns (bool){
-        cSupplied.approve(inverseGovernance, uint256(-1));
-        cSupplied.approve(address(this), uint256(-1));
+        cSupplied.approve(inverseGovernance, uint256(- 1));
+        cSupplied.approve(address(this), uint256(- 1));
         return cSupplied.transferFrom(inverseGovernance, address(this), _amount);
     }
 

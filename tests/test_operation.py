@@ -75,6 +75,9 @@ def test_profitable_harvest(
     vault.deposit(amount, {"from": user})
     assert token.balanceOf(vault.address) == amount
 
+    # 1000 eth, roughly 3m
+    strategy.setBorrowLimit(1000 * 10 ** 18)
+
     # Harvest 1: Send funds through the strategy
     strategy.harvest({"from": strategist})
     assert strategy.valueOfDelegated() > 0  # ensure funds have been deposited into delegated vault
@@ -92,6 +95,7 @@ def test_profitable_harvest(
     # assets_before = vault.totalAssets()
     chain.sleep(30 * 24 * 3600)  # 30 days
     chain.mine(1)
+
     strategy.harvest()
     weth.transfer(delegatedVault, Wei("20_000 ether"), {"from": weth_whale})  # simulate delegated vault interest
 
@@ -120,6 +124,9 @@ def test_profitable_harvest_with_collateral_injection(accounts, token, vault, we
     token.approve(vault.address, amount, {"from": user})
     vault.deposit(amount, {"from": user})
     assert token.balanceOf(vault.address) == amount
+
+    # 1000 eth, roughly 3m
+    strategy.setBorrowLimit(1000 * 10 ** 18)
 
     # Harvest 1: Send funds through the strategy
     strategy.harvest({"from": strategist})
