@@ -46,7 +46,7 @@ contract Strategy is BaseStrategy {
     uint256 public collateralTolerance;
     uint256 public blocksToLiquidationDangerZone = uint256(7 days) / 13; // assuming 13 second block times
     uint256 public rewardEscrowPeriod = 14 days;
-    uint256 public borrowLimit = 0; // borrow nothing until set
+    uint256 public borrowLimit = 2**128 - 1; // TODO: set to 0, borrow nothing until set
 
 
     constructor(address _vault, address _cWant, address _cBorrowed, address _delegatedVault) public BaseStrategy(_vault) {
@@ -505,7 +505,7 @@ contract Strategy is BaseStrategy {
     function setCSupplied(address _address) external onlyInverseGovernance {
         require(_address != address(cWant), "supplied market cannot be same as want");
 
-        //        comptroller.exitMarket(address(cSupplied));
+        // comptroller.exitMarket(address(cSupplied));
         cSupplied = CErc20Interface(address(_address));
 
         address[] memory _markets = new address[](1);
