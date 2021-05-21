@@ -40,6 +40,7 @@ contract Strategy is BaseStrategy {
 
     address[] public path;
     address[] public wethWantPath;
+    address[] public claimableMarkets;
 
     address public inverseGovernance;
     uint256 public targetCollateralFactor;
@@ -80,11 +81,11 @@ contract Strategy is BaseStrategy {
         path = [delegatedVault.token(), address(want)];
         wethWantPath = [address(weth), address(want)];
 
-        address[] memory _markets = new address[](3);
-        _markets[0] = address(cWant);
-        _markets[1] = address(cBorrowed);
-        _markets[2] = address(cSupplied);
-        comptroller.enterMarkets(_markets);
+        claimableMarkets = new address[](3);
+        claimableMarkets[0] = address(cWant);
+        claimableMarkets[1] = address(cBorrowed);
+        claimableMarkets[2] = address(cSupplied);
+        comptroller.enterMarkets(claimableMarkets);
 
         targetCollateralFactor = 0.5 ether; // 50%
         collateralTolerance = 0.01 ether; // 1%
@@ -93,6 +94,7 @@ contract Strategy is BaseStrategy {
         borrowed.safeApprove(address(delegatedVault), uint256(-1));
         weth.approve(address(this), uint256(-1));
         weth.approve(address(router), uint256(-1));
+        reward.approve(address(xInv), uint256(-1));
 
         xInv.delegate(governance()); // delegate voting power to yearn gov
     }
@@ -164,15 +166,13 @@ contract Strategy is BaseStrategy {
         emit Debug("_profit", _profit);
         emit Debug("_debtPayment", _debtPayment);
 
-        if (comptroller.compAccrued(address(this)) > 0) {
-            //            comptroller.claimComp(address(this)); // claim but don't sell
-        }
+        comptroller.claimComp(address(this), claimableMarkets); // claim (but don't sell) INV
         emit Debug("_balanceOfReward", balanceOfReward());
     }
 
     function adjustPosition(uint256 _debtOutstanding) internal override {
         assert(cWant.mint(balanceOfWant()) == NO_ERROR);
-        // assert(xInv.mint(balanceOfReward()) == NO_ERROR); // TODO: Uncomment when market becomes listed
+        assert(xInv.mint(balanceOfReward()) == NO_ERROR);
 
         rebalance(0);
     }
@@ -204,6 +204,7 @@ contract Strategy is BaseStrategy {
         uint256 currentCF = currentCollateralFactor();
         bool isWithinCFRange = targetCollateralFactor.sub(collateralTolerance) < currentCF && currentCF < targetCollateralFactor.add(collateralTolerance);
         return blocksUntilLiquidation() <= blocksToLiquidationDangerZone || !isWithinCFRange;
+        // return !isWithinCFRange;
     }
 
     function prepareMigration(address _newStrategy) internal override {
@@ -530,9 +531,8 @@ contract Strategy is BaseStrategy {
         // comptroller.exitMarket(address(cSupplied));
         cSupplied = CErc20Interface(address(_address));
 
-        address[] memory _markets = new address[](1);
-        _markets[0] = _address;
-        comptroller.enterMarkets(_markets);
+        claimableMarkets[2] = _address;
+        comptroller.enterMarkets(claimableMarkets);
     }
 
 
