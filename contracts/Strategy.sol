@@ -46,8 +46,7 @@ contract Strategy is BaseStrategy {
     uint256 public targetCollateralFactor;
     uint256 public collateralTolerance;
     uint256 public blocksToLiquidationDangerZone = uint256(7 days) / 13; // assuming 13 second block times
-    uint256 public rewardEscrowPeriod = 14 days;
-    uint256 public borrowLimit = 0; // TODO: set to 0, borrow nothing until set
+    uint256 public borrowLimit = 0; // borrow nothing until set
 
 
     constructor(address _vault, address _cWant, address _cBorrowed, address _delegatedVault) public BaseStrategy(_vault) {
@@ -413,7 +412,7 @@ contract Strategy is BaseStrategy {
         return address(this).balance;
     }
 
-    function balanceOfUnderlying(CTokenInterface cToken) public view returns (uint256){
+    function balanceOfUnderlying(CTokenInterface cToken) internal view returns (uint256){
         return estimateAmountCTokenInUnderlying(cToken.balanceOf(address(this)), cToken);
     }
 
@@ -447,27 +446,27 @@ contract Strategy is BaseStrategy {
         return estimateAmountUnderlyingInUsd(_amountInBorrowed, cBorrowed);
     }
 
-    function estimateAmountUnderlyingInUsd(uint256 _amountUnderlying, CTokenInterface cToken) public view returns (uint256){
+    function estimateAmountUnderlyingInUsd(uint256 _amountUnderlying, CTokenInterface cToken) internal view returns (uint256){
         uint256 _usdPerUnderlying = comptroller.oracle().getUnderlyingPrice(address(cToken));
         return _amountUnderlying.mul(_usdPerUnderlying).div(1 ether);
     }
 
-    function estimateAmountUsdInUnderlying(uint256 _amountInUsd, CTokenInterface cToken) public view returns (uint256){
+    function estimateAmountUsdInUnderlying(uint256 _amountInUsd, CTokenInterface cToken) internal view returns (uint256){
         uint256 _usdPerUnderlying = comptroller.oracle().getUnderlyingPrice(address(cToken));
         return _amountInUsd.mul(1 ether).div(_usdPerUnderlying);
     }
 
-    function estimateAmountBorrowedInShares(uint256 _amountBorrowed) public view returns (uint256){
+    function estimateAmountBorrowedInShares(uint256 _amountBorrowed) internal view returns (uint256){
         uint256 _borrowedPerShare = delegatedVault.pricePerShare();
         return _amountBorrowed.mul(10 ** delegatedVault.decimals()).div(_borrowedPerShare);
     }
 
-    function estimateAmountCTokenInUnderlying(uint256 _amountCToken, CTokenInterface cToken) public view returns (uint256){
+    function estimateAmountCTokenInUnderlying(uint256 _amountCToken, CTokenInterface cToken) internal view returns (uint256){
         uint256 _underlyingPerCToken = cToken.exchangeRateStored();
         return _amountCToken.mul(_underlyingPerCToken).div(1 ether);
     }
 
-    function estimateAmountUnderlyingInCToken(uint256 _amountUnderlying, CTokenInterface cToken) public view returns (uint256){
+    function estimateAmountUnderlyingInCToken(uint256 _amountUnderlying, CTokenInterface cToken) internal view returns (uint256){
         uint256 _underlyingPerCToken = cToken.exchangeRateStored();
         return _amountUnderlying.mul(1 ether).div(_underlyingPerCToken);
     }

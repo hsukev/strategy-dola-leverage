@@ -83,14 +83,6 @@ def test_profitable_harvest(
     assert strategy.valueOfDelegated() > 0  # ensure funds have been deposited into delegated vault
     assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
 
-    # delegatedStrat = Contract(delegatedVault.withdrawalQueue(0))
-    # delegatedStrat.harvest({"from": gov})
-    # chain.sleep(60*60 * 24)  # 1 day
-    # chain.mine(1)
-    # delegatedStrat.harvest({"from": gov})
-    # chain.sleep(3600 * 6)  # 6 hrs needed for profits to unlock
-    # chain.mine(1)
-
     # increase rewards, lending interest and borrowing interests
     # assets_before = vault.totalAssets()
     chain.sleep(30 * 24 * 3600)  # 30 days
@@ -232,6 +224,39 @@ def test_change_debt_with_injection(
     print('debtRatio 5000')
     util.stateOfStrat(strategy, token)
     assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == half
+
+def test_borrow_limit(token, vault, cBorrowed, strategy, user, strategist, amount, RELATIVE_APPROX):
+    # Deposit to the vault
+    token.approve(vault.address, amount, {"from": user})
+    vault.deposit(amount, {"from": user})
+    assert token.balanceOf(vault.address) == amount
+
+    # default no borrowing
+    strategy.harvest({"from": strategist})
+    assert cBorrowed.borrowBalanceStored(strategy) == 0
+    assert strategy.valueOfBorrowedOwed() == 0
+    assert strategy.valueOfDelegated() == 0
+
+    strategy.tend({"from": strategist})
+    assert strategy.valueOfBorrowedOwed() == 0
+    assert strategy.valueOfDelegated() == 0
+
+    # set borrow limit to 1000 eth, roughly 3m
+    strategy.setBorrowLimit(1000 * 1e18, {"from": strategist})
+    strategy.tend({"from": strategist})
+    borrowed_amount = cBorrowed.borrowBalanceStored(strategy)
+    borrowed_value = strategy.valueOfBorrowedOwed()
+    assert borrowed_amount > 0
+    assert borrowed_value > 0
+    assert pytest.approx(strategy.valueOfDelegated(), rel=RELATIVE_APPROX) == borrowed_value
+
+    # reduce borrow limit
+    half_borrowed_amount = borrowed_amount / 2
+    half_borrowed_value = borrowed_value / 2
+    strategy.setBorrowLimit(half_borrowed_amount, {"from": strategist})
+    strategy.tend({"from": strategist})
+    assert pytest.approx(cBorrowed.borrowBalanceStored(strategy), rel=RELATIVE_APPROX) == half_borrowed_amount
+    assert pytest.approx(strategy.valueOfBorrowedOwed(), rel=RELATIVE_APPROX) == half_borrowed_value
 
 
 def test_sweep(gov, vault, strategy, token, user, amount, inv, inv_whale, rook, rook_whale):
