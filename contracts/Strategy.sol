@@ -142,7 +142,7 @@ contract Strategy is BaseStrategy {
     function prepareReturn(uint256 _debtOutstanding) internal override returns (uint256 _profit, uint256 _loss, uint256 _debtPayment){
         uint256 _looseBalance = balanceOfWant();
 
-        sellProfits();
+        _sellDelegatedProfits();
 
         // TODO lent interest
 
@@ -380,7 +380,7 @@ contract Strategy is BaseStrategy {
                     assert(cWant.redeemUnderlying(_amountWantDesired) == NO_ERROR);
                     // // emit Debug("_safeUnwindCTokenUnderlying balanceOfWant", balanceOfWant());
                     router.swapTokensForExactETH(_unpaidBorrowed, _amountWantDesired, wantWethPath, address(this), now);
-                    
+
                     // uint256 _amountRepaying = balanceOfEth().sub(_ethBefore);
                     // uint256 _curr = cBorrowed.borrowBalanceCurrent(address(this));
                     // emit Debug("_safeUnwindCTokenUnderlying _amountRepaying", _amountRepaying);
@@ -396,17 +396,16 @@ contract Strategy is BaseStrategy {
     }
 
     // sell profits earned from delegated vault
-    function sellProfits() internal {
-        uint256 _debt = vault.strategies(address(this)).totalDebt;
-        uint256 _totalAssets = estimatedTotalAssets();
+    function _sellDelegatedProfits() internal {
+        uint256 _valueOfBorrowed = valueOfBorrowedOwed();
+        uint256 _valueOfDelegated = valueOfDelegated();
 
         // emit Debug("sell _debt", _debt);
         // emit Debug("sell _totalAssets", _totalAssets);
 
-        if (_totalAssets > _debt) {
-            uint256 _amountProfitInWant = _totalAssets.sub(_debt);
-            uint256 _amountInBorrowed = estimateAmountUsdInUnderlying(estimateAmountUnderlyingInUsd(_amountProfitInWant, cWant), cBorrowed);
-            uint256 _amountInShares = estimateAmountBorrowedInShares(_amountInBorrowed);
+        if (_valueOfDelegated > _valueOfBorrowed) {
+            uint256 _valueOfProfit = _valueOfDelegated.sub(_valueOfBorrowed);
+            uint256 _amountInShares = estimateAmountBorrowedInShares(estimateAmountUsdInUnderlying(_valueOfProfit, cBorrowed));
             // emit Debug("sell _amountInShares", _amountInShares);
 
             if (_amountInShares > delegatedVault.balanceOf(address(this))) {
