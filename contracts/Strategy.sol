@@ -294,12 +294,8 @@ contract Strategy is BaseStrategy {
             uint256 _valueUnderlyingRedeemable = Math.min(_amountCollatRedeemableInUnderlying, _amountCTokenInUnderlying);
             _valueUnderlyingRedeemable = Math.min(_valueUnderlyingRedeemable, _amountMarketCashInUnderlying);
 
-            emit Debug("calculateAdjustment _amountCRedeemable", _valueUnderlyingRedeemable);
-            uint256 error = _cToken.redeemUnderlying(_valueUnderlyingRedeemable);
-            emit Debug("calculateAdjustment error", uint256(error));
-            require(error == 0, "error redeeming");
+            assert(_cToken.redeemUnderlying(_valueUnderlyingRedeemable) == NO_ERROR);
             uint256 _want = balanceOfWant();
-            emit Debug("calculateAdjustment _want", _want);
         }
     }
 
