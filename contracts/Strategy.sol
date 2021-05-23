@@ -173,7 +173,7 @@ contract Strategy is BaseStrategy {
         assert(cWant.mint(balanceOfWant()) == NO_ERROR);
         assert(xInv.mint(balanceOfReward()) == NO_ERROR);
 
-        rebalance(0);
+        _rebalance(_debtOutstanding);
     }
 
     function liquidatePosition(uint256 _amountNeeded) internal override returns (uint256 _liquidatedAmount, uint256 _loss){
@@ -280,7 +280,7 @@ contract Strategy is BaseStrategy {
         _cToken.accrueInterest();
         uint256 _amountUnderlyingInUsd = estimateAmountUnderlyingInUsd(_amountUnderlying, _cToken);
 
-        rebalance(_amountUnderlyingInUsd);
+        _rebalance(_amountUnderlyingInUsd);
         // cTokens are now freed up
 
         if (redeem) {
@@ -333,8 +333,8 @@ contract Strategy is BaseStrategy {
 
     // Rebalances supply/borrow to maintain targetCollaterFactor
     // @param _pendingWithdrawInUsd = collateral that needs to be freed up after rebalancing
-    function rebalance(uint256 _pendingWithdrawInUsd) internal {
-        emit Debug("rebalance _pendingWithdrawInUsd", _pendingWithdrawInUsd);
+    function _rebalance(uint256 _pendingWithdrawInUsd) internal {
+        cBorrowed.accrueInterest();
         (uint256 _adjustmentInUsd, bool _neg) = calculateAdjustmentInUsd(_pendingWithdrawInUsd);
         emit Debug("rebalance _adjustmentInUsd", _adjustmentInUsd);
 
@@ -362,13 +362,36 @@ contract Strategy is BaseStrategy {
             uint256 _adjustmentInShares = estimateAmountBorrowedInShares(_adjustmentInBorrowed);
             uint256 _adjustmentInSharesAllowed = Math.min(delegatedVault.balanceOf(address(this)), _adjustmentInShares);
             uint256 _amountBorrowedWithdrawn = delegatedVault.withdraw(_adjustmentInSharesAllowed);
-
             // unwrap eth
             weth.withdraw(_amountBorrowedWithdrawn);
-
-            emit Debug("_adjust bal eth before", balanceOfEth());
             cBorrowed.repayBorrow{value : balanceOfEth()}();
-            emit Debug("_adjust bal eth after", balanceOfEth());
+
+            // when actual repaid falls short of adjustment needed
+            uint256 _valueBorrowedWithdrawn = estimateAmountUnderlyingInUsd(_amountBorrowedWithdrawn, cBorrowed);
+            if (_adjustmentInUsd > _valueBorrowedWithdrawn) {
+                uint256 _unpaidBorrowedInUsd = _adjustmentInUsd.sub(_valueBorrowedWithdrawn);
+                uint256 _freedC = valueOfCWant();
+                // too small value will cause problem when redeeming, 
+                if (_unpaidBorrowedInUsd > 0.001 ether && _freedC > _unpaidBorrowedInUsd) {
+                    uint256 _ethBefore = balanceOfEth();
+                    emit Debug("_safeUnwindCTokenUnderlying _unpaidBorrowedInUsd", _unpaidBorrowedInUsd);
+                    uint256 _unpaidBorrowed = estimateAmountUsdInUnderlying(_unpaidBorrowedInUsd, cBorrowed);
+                    emit Debug("_safeUnwindCTokenUnderlying _unpaidBorrowed", _unpaidBorrowed);
+                    uint256 _amountWantRequired = router.getAmountsIn(_unpaidBorrowed, wantWethPath)[0];
+                    emit Debug("_safeUnwindCTokenUnderlying _amountWantRequired", _amountWantRequired);
+                    // overestimate a little bit
+                    uint256 _amountWantDesired = _amountWantRequired.mul(1.03 ether).div(1 ether);
+                    assert(cWant.redeemUnderlying(_amountWantDesired) == NO_ERROR);
+                    emit Debug("_safeUnwindCTokenUnderlying balanceOfWant", balanceOfWant());
+                    router.swapTokensForExactETH(_unpaidBorrowed, _amountWantDesired, wantWethPath, address(this), now);
+                    weth.withdraw(weth.balanceOf(address(this)));
+                    uint256 _amountRepaying = balanceOfEth().sub(_ethBefore);
+                    uint256 _curr = cBorrowed.borrowBalanceCurrent(address(this));
+                    emit Debug("_safeUnwindCTokenUnderlying _amountRepaying", _amountRepaying);
+                    emit Debug("_safeUnwindCTokenUnderlying _curr", _curr);
+                    cBorrowed.repayBorrow{value : _amountRepaying}();
+                }
+            }
         }
     }
 
@@ -497,7 +520,7 @@ contract Strategy is BaseStrategy {
         require(_targetMantissa > collateralTolerance, "target collateral factor too low!!");
 
         targetCollateralFactor = _targetMantissa;
-        rebalance(0);
+        _rebalance(0);
     }
 
     function setRouter(address _address) external onlyGovernance {

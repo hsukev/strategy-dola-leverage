@@ -62,8 +62,9 @@ def test_emergency_exit(
 
     # set emergency and exit
     strategy.setEmergencyExit({"from": strategist})
+    util.stateOfStrat(strategy, token)
     strategy.harvest({"from": strategist})
-    assert strategy.estimatedTotalAssets() < amount
+    assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == 0
 
 
 def test_profitable_harvest(
@@ -224,6 +225,7 @@ def test_change_debt_with_injection(
     print('debtRatio 5000')
     util.stateOfStrat(strategy, token)
     assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == half
+
 
 def test_borrow_limit(token, vault, cBorrowed, strategy, user, strategist, amount, RELATIVE_APPROX):
     # Deposit to the vault
