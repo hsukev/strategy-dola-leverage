@@ -40,6 +40,7 @@ contract Strategy is BaseStrategy {
 
     address[] public path;
     address[] public wethWantPath;
+    address[] public wantWethPath;
     address[] public claimableMarkets;
 
     address public inverseGovernance;
@@ -79,6 +80,7 @@ contract Strategy is BaseStrategy {
 
         path = [delegatedVault.token(), address(want)];
         wethWantPath = [address(weth), address(want)];
+        wantWethPath = [address(want), address(weth)];
 
         claimableMarkets = new address[](3);
         claimableMarkets[0] = address(cWant);
@@ -90,6 +92,7 @@ contract Strategy is BaseStrategy {
         collateralTolerance = 0.01 ether; // 1%
 
         want.safeApprove(address(cWant), uint256(-1));
+        want.safeApprove(address(router), uint256(-1));
         borrowed.safeApprove(address(delegatedVault), uint256(-1));
         weth.approve(address(this), uint256(-1));
         weth.approve(address(router), uint256(-1));
@@ -160,13 +163,13 @@ contract Strategy is BaseStrategy {
             }
         }
 
-        emit Debug("_loss", _loss);
-        emit Debug("_balanceOfWant", balanceOfWant());
-        emit Debug("_profit", _profit);
-        emit Debug("_debtPayment", _debtPayment);
+        // emit Debug("_loss", _loss);
+        // emit Debug("_balanceOfWant", balanceOfWant());
+        // emit Debug("_profit", _profit);
+        // emit Debug("_debtPayment", _debtPayment);
 
         comptroller.claimComp(address(this), claimableMarkets); // claim (but don't sell) INV
-        emit Debug("_balanceOfReward", balanceOfReward());
+        // emit Debug("_balanceOfReward", balanceOfReward());
     }
 
     function adjustPosition(uint256 _debtOutstanding) internal override {
@@ -183,13 +186,13 @@ contract Strategy is BaseStrategy {
             uint256 _desiredWithdraw = _amountNeeded.sub(looseBalance);
             safeUnwindCTokenUnderlying(_desiredWithdraw, cWant, true);
             uint256 _newLooseBalance = balanceOfWant();
-            emit Debug("_liquidatePosition newLooseBalance", _newLooseBalance);
-            emit Debug("_liquidatePosition _amountNeeded", _amountNeeded);
+            // emit Debug("_liquidatePosition newLooseBalance", _newLooseBalance);
+            // emit Debug("_liquidatePosition _amountNeeded", _amountNeeded);
 
             _liquidatedAmount = Math.min(_amountNeeded, _newLooseBalance);
             if (_amountNeeded > _newLooseBalance) {
                 _loss = _amountNeeded.sub(_newLooseBalance);
-                emit Debug("_liquidatePosition _loss", _loss);
+                // emit Debug("_liquidatePosition _loss", _loss);
             }
         } else {
             _liquidatedAmount = _amountNeeded;
@@ -276,7 +279,7 @@ contract Strategy is BaseStrategy {
     // function will try to free up as much as it can safely
     // @param redeem: True will redeem to cToken.underlying. False will remain as cToken
     function safeUnwindCTokenUnderlying(uint256 _amountUnderlying, CErc20Interface _cToken, bool redeem) internal {
-        emit Debug("_safeUnwindCTokenUnderlying");
+        // emit Debug("_safeUnwindCTokenUnderlying");
         _cToken.accrueInterest();
         uint256 _amountUnderlyingInUsd = estimateAmountUnderlyingInUsd(_amountUnderlying, _cToken);
 
@@ -332,14 +335,14 @@ contract Strategy is BaseStrategy {
     function _rebalance(uint256 _pendingWithdrawInUsd) internal {
         cBorrowed.accrueInterest();
         (uint256 _adjustmentInUsd, bool _neg) = calculateAdjustmentInUsd(_pendingWithdrawInUsd);
-        emit Debug("rebalance _adjustmentInUsd", _adjustmentInUsd);
+        // emit Debug("rebalance _adjustmentInUsd", _adjustmentInUsd);
 
         if (_adjustmentInUsd == 0) {
             // do nothing
         } else if (!_neg) {
             // overcollateralized, can borrow more
             uint256 _adjustmentInBorrowed = estimateAmountUsdInUnderlying(_adjustmentInUsd, cBorrowed);
-            emit Debug("rebalance _adjustmentInBorrowed", _adjustmentInBorrowed);
+            // emit Debug("rebalance _adjustmentInBorrowed", _adjustmentInBorrowed);
 
             assert(cBorrowed.borrow(_adjustmentInBorrowed) == NO_ERROR);
             uint256 _actualBorrowed = address(this).balance;
@@ -347,20 +350,17 @@ contract Strategy is BaseStrategy {
             // wrap ether
             weth.deposit{value : _actualBorrowed}();
             uint256 _wethBalanace = weth.balanceOf(address(this));
-            emit Debug("rebalance _actualBorrowed", _wethBalanace);
+            // emit Debug("rebalance _actualBorrowed", _wethBalanace);
 
             delegatedVault.deposit(_wethBalanace);
         } else {
-            emit Debug("_adjust negative");
+            // emit Debug("_adjust negative");
 
             // undercollateralized, must unwind and repay to free up collateral
             uint256 _adjustmentInBorrowed = estimateAmountUsdInUnderlying(_adjustmentInUsd, cBorrowed);
             uint256 _adjustmentInShares = estimateAmountBorrowedInShares(_adjustmentInBorrowed);
             uint256 _adjustmentInSharesAllowed = Math.min(delegatedVault.balanceOf(address(this)), _adjustmentInShares);
             uint256 _amountBorrowedWithdrawn = delegatedVault.withdraw(_adjustmentInSharesAllowed);
-            // unwrap eth
-            weth.withdraw(_amountBorrowedWithdrawn);
-            cBorrowed.repayBorrow{value : balanceOfEth()}();
 
             // when actual repaid falls short of adjustment needed
             uint256 _valueBorrowedWithdrawn = estimateAmountUnderlyingInUsd(_amountBorrowedWithdrawn, cBorrowed);
@@ -370,24 +370,28 @@ contract Strategy is BaseStrategy {
                 // too small value will cause problem when redeeming, 
                 if (_unpaidBorrowedInUsd > 0.001 ether && _freedC > _unpaidBorrowedInUsd) {
                     uint256 _ethBefore = balanceOfEth();
-                    emit Debug("_safeUnwindCTokenUnderlying _unpaidBorrowedInUsd", _unpaidBorrowedInUsd);
+                    // emit Debug("_safeUnwindCTokenUnderlying _unpaidBorrowedInUsd", _unpaidBorrowedInUsd);
                     uint256 _unpaidBorrowed = estimateAmountUsdInUnderlying(_unpaidBorrowedInUsd, cBorrowed);
-                    emit Debug("_safeUnwindCTokenUnderlying _unpaidBorrowed", _unpaidBorrowed);
+                    // emit Debug("_safeUnwindCTokenUnderlying _unpaidBorrowed", _unpaidBorrowed);
                     uint256 _amountWantRequired = router.getAmountsIn(_unpaidBorrowed, wantWethPath)[0];
-                    emit Debug("_safeUnwindCTokenUnderlying _amountWantRequired", _amountWantRequired);
+                    // emit Debug("_safeUnwindCTokenUnderlying _amountWantRequired", _amountWantRequired);
                     // overestimate a little bit
                     uint256 _amountWantDesired = _amountWantRequired.mul(1.03 ether).div(1 ether);
                     assert(cWant.redeemUnderlying(_amountWantDesired) == NO_ERROR);
-                    emit Debug("_safeUnwindCTokenUnderlying balanceOfWant", balanceOfWant());
+                    // // emit Debug("_safeUnwindCTokenUnderlying balanceOfWant", balanceOfWant());
                     router.swapTokensForExactETH(_unpaidBorrowed, _amountWantDesired, wantWethPath, address(this), now);
-                    weth.withdraw(weth.balanceOf(address(this)));
-                    uint256 _amountRepaying = balanceOfEth().sub(_ethBefore);
-                    uint256 _curr = cBorrowed.borrowBalanceCurrent(address(this));
-                    emit Debug("_safeUnwindCTokenUnderlying _amountRepaying", _amountRepaying);
-                    emit Debug("_safeUnwindCTokenUnderlying _curr", _curr);
-                    cBorrowed.repayBorrow{value : _amountRepaying}();
+                    
+                    // uint256 _amountRepaying = balanceOfEth().sub(_ethBefore);
+                    // uint256 _curr = cBorrowed.borrowBalanceCurrent(address(this));
+                    // emit Debug("_safeUnwindCTokenUnderlying _amountRepaying", _amountRepaying);
+                    // emit Debug("_safeUnwindCTokenUnderlying _curr", _curr);
+                    // cBorrowed.repayBorrow{value : _amountRepaying}();
                 }
             }
+
+            // unwrap eth
+            weth.withdraw(weth.balanceOf(address(this)));
+            cBorrowed.repayBorrow{value : balanceOfEth()}();
         }
     }
 
@@ -396,21 +400,21 @@ contract Strategy is BaseStrategy {
         uint256 _debt = vault.strategies(address(this)).totalDebt;
         uint256 _totalAssets = estimatedTotalAssets();
 
-        emit Debug("sell _debt", _debt);
-        emit Debug("sell _totalAssets", _totalAssets);
+        // emit Debug("sell _debt", _debt);
+        // emit Debug("sell _totalAssets", _totalAssets);
 
         if (_totalAssets > _debt) {
             uint256 _amountProfitInWant = _totalAssets.sub(_debt);
             uint256 _amountInBorrowed = estimateAmountUsdInUnderlying(estimateAmountUnderlyingInUsd(_amountProfitInWant, cWant), cBorrowed);
             uint256 _amountInShares = estimateAmountBorrowedInShares(_amountInBorrowed);
-            emit Debug("sell _amountInShares", _amountInShares);
+            // emit Debug("sell _amountInShares", _amountInShares);
 
             if (_amountInShares > delegatedVault.balanceOf(address(this))) {
                 // max uint256 is uniquely set to withdraw everything
                 _amountInShares = uint256(- 1);
             }
             uint256 _actualWithdrawn = delegatedVault.withdraw(_amountInShares);
-            emit Debug("sell _actualWithdrawn", _actualWithdrawn);
+            // emit Debug("sell _actualWithdrawn", _actualWithdrawn);
             // sell to want
             if (_actualWithdrawn > 0) {
                 router.swapExactTokensForTokens(_actualWithdrawn, 0, path, address(this), now);
