@@ -155,14 +155,10 @@ contract Strategy is BaseStrategy {
         }
 
         if (_debtOutstanding > 0) {
-            (uint256 _amountLiquidated, uint256 _amountLoss) = liquidatePosition(_debtOutstanding);
+            (uint256 _amountLiquidated, uint256 _loss) = liquidatePosition(_debtOutstanding);
             _debtPayment = Math.min(_debtOutstanding, _amountLiquidated);
-            if (_profit > _amountLoss) {
-                _profit = _profit.sub(_amountLoss);
-                _loss = 0;
-            } else {
+            if (_loss > 0) {
                 _profit = 0;
-                _loss = _amountLoss.sub(_profit);
             }
         }
 
