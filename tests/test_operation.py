@@ -9,6 +9,7 @@ def test_immediate_operation(cWant, chain,
                              ):
     # Deposit to the vault
     user_balance_before = token.balanceOf(user)
+    strategy.setBorrowLimit(1000 * 10 ** 18)
     token.approve(vault.address, amount, {"from": user})
     vault.deposit(amount, {"from": user})
     assert token.balanceOf(vault.address) == amount
@@ -33,6 +34,7 @@ def test_operation(cWant, chain,
     # Deposit to the vault
     user_balance_before = token.balanceOf(user)
     token.approve(vault.address, amount, {"from": user})
+    strategy.setBorrowLimit(1000 * 10 ** 18)
     vault.deposit(amount, {"from": user})
     assert token.balanceOf(vault.address) == amount
 
@@ -52,19 +54,31 @@ def test_operation(cWant, chain,
 
 
 def test_emergency_exit(
-        accounts, token, vault, strategy, user, strategist, amount, RELATIVE_APPROX
+        accounts, token, vault, strategy, user, strategist, amount, RELATIVE_APPROX, chain
 ):
     # Deposit to the vault
     token.approve(vault.address, amount, {"from": user})
     vault.deposit(amount, {"from": user})
+    strategy.setBorrowLimit(100 * 1e18)
+    print(f'vault pps: {vault.pricePerShare()}')
     strategy.harvest()
+    print(f'vault pps: {vault.pricePerShare()}')
     assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
+
+    chain.sleep(3600 * 6)  # 6 hrs for pps to recover
+    chain.mine(1)
 
     # set emergency and exit
     strategy.setEmergencyExit({"from": strategist})
+    print(f'\n before harvest')
+    print(f'vault pps: {vault.pricePerShare()}')
     util.stateOfStrat(strategy, token)
     strategy.harvest({"from": strategist})
-    assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == 0
+    print(f'\n after harvest')
+    print(f'vault pps: {vault.pricePerShare()}')
+    util.stateOfStrat(strategy, token)
+    # dust
+    assert strategy.estimatedTotalAssets() < 1e12
 
 
 def test_profitable_harvest(
@@ -173,6 +187,7 @@ def test_change_debt(
     # Deposit to the vault and harvest
     token.approve(vault.address, amount, {"from": user})
     vault.deposit(amount, {"from": user})
+    strategy.setBorrowLimit(1000 * 10 ** 18)
     vault.updateStrategyDebtRatio(strategy.address, 5_000, {"from": gov})
     strategy.harvest()
     half = int(amount / 2)
@@ -200,6 +215,7 @@ def test_change_debt_with_injection(
 
     # Deposit to the vault and harvest
     token.approve(vault.address, amount, {"from": user})
+    strategy.setBorrowLimit(1000 * 10 ** 18)
     vault.deposit(amount, {"from": user})
     vault.updateStrategyDebtRatio(strategy.address, 5_000, {"from": gov})
     strategy.harvest()
@@ -309,6 +325,8 @@ def test_triggers(
 ):
     # Deposit to the vault and harvest
     token.approve(vault.address, amount, {"from": user})
+    strategy.setBorrowLimit(1000 * 10 ** 18)
+
     vault.deposit(amount, {"from": user})
     vault.updateStrategyDebtRatio(strategy.address, 5_000, {"from": gov})
     strategy.harvest()

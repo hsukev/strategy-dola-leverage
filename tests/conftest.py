@@ -153,4 +153,4 @@ def cSupply_amount(cSupplied):
 
 @pytest.fixture(scope="session")
 def RELATIVE_APPROX():
-    yield 1e-3
+    yield 1e-5

@@ -10,12 +10,14 @@ def test_migration(
 ):
     # Deposit to the vault and harvest
     token.approve(vault.address, amount, {"from": user})
+    strategy.setBorrowLimit(1000 * 10 ** 18)
     vault.deposit(amount, {"from": user})
     strategy.harvest()
     assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
 
     # migrate to a new strategy
     new_strategy = strategist.deploy(Strategy, vault, cWant, cBorrowed, delegatedVault)
+    new_strategy.setBorrowLimit(1000 * 10 ** 18)
     strategy.migrate(new_strategy.address, {"from": gov})
     assert (
             pytest.approx(new_strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX)
