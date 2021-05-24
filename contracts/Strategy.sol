@@ -103,7 +103,6 @@ contract Strategy is BaseStrategy {
         reward.approve(address(xInv), uint256(- 1));
 
         minRedeemPrecision = 10 ** (vault.decimals() - cWant.decimals());
-        emit Debug("_safeUnwindCTokenUnderlying _minPrecision", minRedeemPrecision);
 
         // delegate voting power to yearn gov
         xInv.delegate(governance());
@@ -167,11 +166,6 @@ contract Strategy is BaseStrategy {
             }
         }
 
-        //        emit Debug("_loss", _loss);
-        //        emit Debug("_balanceOfWant", balanceOfWant());
-        //        emit Debug("_profit", _profit);
-        //        emit Debug("_debtPayment", _debtPayment);
-
         comptroller.claimComp(address(this), claimableMarkets);
         // claim (but don't sell) INV
         // emit Debug("_balanceOfReward", balanceOfReward());
@@ -180,7 +174,6 @@ contract Strategy is BaseStrategy {
     function adjustPosition(uint256 _debtOutstanding) internal override {
         assert(cWant.mint(balanceOfWant()) == NO_ERROR);
         assert(xInv.mint(balanceOfReward()) == NO_ERROR);
-        emit Debug("adjustPosition cWant", cWant.balanceOf(address(this)));
 
         _rebalance(_debtOutstanding);
     }
@@ -441,19 +434,17 @@ contract Strategy is BaseStrategy {
     }
 
     function _sellLendingProfits() internal {
-        //        cWant.accrueInterest();
-        //        uint256 _debt = vault.strategies(address(this)).totalDebt;
-        //        uint256 _totalAssets = estimateAmountUsdInUnderlying(valueOfCWant(), cWant);
-        //        emit Debug("sell _debt", _debt);
-        //        emit Debug("sell _totalAssets", _totalAssets);
-        //
-        //        if (_totalAssets > _debt) {
-        //            uint256 _amountProfitInWant = _totalAssets.sub(_debt);
-        //            emit Debug("sell _amountProfitInWant", _amountProfitInWant);
-        //            if (_amountProfitInWant > minRedeemPrecision) {
-        //                cWant.redeemUnderlying(_amountProfitInWant);
-        //            }
-        //        }
+        cWant.accrueInterest();
+        uint256 _debt = vault.strategies(address(this)).totalDebt;
+        uint256 _totalAssets = estimateAmountUsdInUnderlying(valueOfCWant(), cWant);
+        emit Debug("sell _debt", _debt);
+        emit Debug("sell _totalAssets", _totalAssets);
+
+        if (_totalAssets > _debt) {
+            uint256 _amountProfitInWant = _totalAssets.sub(_debt);
+            emit Debug("sell _amountProfitInWant", _amountProfitInWant);
+            safeRedeem(_amountProfitInWant, cWant);
+        }
     }
 
     // Loose want
@@ -589,7 +580,6 @@ contract Strategy is BaseStrategy {
         claimableMarkets[2] = _address;
         comptroller.enterMarkets(claimableMarkets);
     }
-
 
     // @param _amount in cToken from the private marketa
     function supplyCollateral(uint256 _amount) external onlyInverseGovernance returns (bool){
