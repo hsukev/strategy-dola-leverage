@@ -146,8 +146,8 @@ contract Strategy is BaseStrategy {
         uint256 _looseBalance = balanceOfWant();
 
         _sellDelegatedProfits();
-
-        // TODO lent interest
+        //        emit Debug("sell lending next");
+        _sellLendingProfits();
 
         uint256 _balanceAfterProfit = balanceOfWant();
         if (_balanceAfterProfit > _looseBalance) {
@@ -421,6 +421,22 @@ contract Strategy is BaseStrategy {
                 router.swapExactTokensForTokens(_actualWithdrawn, 0, path, address(this), now);
             }
         }
+    }
+
+    function _sellLendingProfits() internal {
+        //        cWant.accrueInterest();
+        //        uint256 _debt = vault.strategies(address(this)).totalDebt;
+        //        uint256 _totalAssets = estimateAmountUsdInUnderlying(valueOfCWant(), cWant);
+        //        emit Debug("sell _debt", _debt);
+        //        emit Debug("sell _totalAssets", _totalAssets);
+        //
+        //        if (_totalAssets > _debt) {
+        //            uint256 _amountProfitInWant = _totalAssets.sub(_debt);
+        //            emit Debug("sell _amountProfitInWant", _amountProfitInWant);
+        //            if (_amountProfitInWant > minRedeemPrecision) {
+        //                cWant.redeemUnderlying(_amountProfitInWant);
+        //            }
+        //        }
     }
 
     // Loose want
