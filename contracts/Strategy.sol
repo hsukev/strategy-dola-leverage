@@ -70,9 +70,6 @@ contract Strategy is BaseStrategy {
 
         require(cWant.underlying() != address(borrowed), "can't be delegating to your own vault");
         require(cWant.underlying() == address(want), "cWant does not match want");
-        // TODO cETH uses a unique interface that does not have an underlying() fx
-        //        require(cBorrowed.underlying() == address(borrowed), "cBorrowed does not match delegated vault token");
-        //
 
         require(address(cWant) != address(cBorrowed), "want and borrowed markets can't be the same");
         require(address(cWant) != address(cSupplied), "want and supplied markets can't be the same");
@@ -142,15 +139,10 @@ contract Strategy is BaseStrategy {
         return amountOut;
     }
 
-    event Debug(string message, uint256 amount);
-    event Debug(string message);
-
     function prepareReturn(uint256 _debtOutstanding) internal override returns (uint256 _profit, uint256 _loss, uint256 _debtPayment){
-
         uint256 _looseBalance = balanceOfWant();
 
         _sellDelegatedProfits();
-        //        emit Debug("sell lending next");
         _sellLendingProfits();
 
         uint256 _balanceAfterProfit = balanceOfWant();
@@ -166,9 +158,8 @@ contract Strategy is BaseStrategy {
             }
         }
 
-        comptroller.claimComp(address(this), claimableMarkets);
         // claim (but don't sell) INV
-        // emit Debug("_balanceOfReward", balanceOfReward());
+        comptroller.claimComp(address(this), claimableMarkets);
     }
 
     function adjustPosition(uint256 _debtOutstanding) internal override {
@@ -185,8 +176,6 @@ contract Strategy is BaseStrategy {
             uint256 _desiredWithdraw = _amountNeeded.sub(looseBalance);
             safeUnwindCTokenUnderlying(_desiredWithdraw, cWant, true);
             uint256 _newLooseBalance = balanceOfWant();
-            // emit Debug("_liquidatePosition newLooseBalance", _newLooseBalance);
-            // emit Debug("_liquidatePosition _amountNeeded", _amountNeeded);
 
             _liquidatedAmount = Math.min(_amountNeeded, _newLooseBalance);
             _loss = _amountNeeded.sub(_liquidatedAmount);
@@ -199,10 +188,10 @@ contract Strategy is BaseStrategy {
         if (harvestTrigger(ethToWant(callCostInWei))) {
             return false;
         }
-        uint256 currentCF = currentCollateralFactor();
+        uint256 currentCF = valueOfBorrowedOwed().mul(1 ether).div(valueOfTotalCollateral());
         bool isWithinCFRange = targetCollateralFactor.sub(collateralTolerance) < currentCF && currentCF < targetCollateralFactor.add(collateralTolerance);
-        return blocksUntilLiquidation() <= blocksToLiquidationDangerZone || !isWithinCFRange;
-        // return !isWithinCFRange;
+        //        blocksUntilLiquidation() <= blocksToLiquidationDangerZone ||
+        return !isWithinCFRange;
     }
 
     function prepareMigration(address _newStrategy) internal override {
@@ -243,39 +232,38 @@ contract Strategy is BaseStrategy {
     //       - the borrow rate of the borrowed token
     //       - required collateral factor of the borrowed token
     //     ((deposits*colateralThreshold - borrows) / (borrows*borrowrate - deposits*colateralThreshold*interestrate));
-    function blocksUntilLiquidation() public view returns (uint256) {
-        (, uint256 collateralFactorMantissa,) = comptroller.markets(address(cBorrowed));
-
-        uint256 supplyRate1 = cWant.supplyRatePerBlock();
-        uint256 collateralisedDeposit1 = valueOfCWant().mul(collateralFactorMantissa).div(1e18);
-
-        uint256 supplyRate2 = cSupplied.supplyRatePerBlock();
-        uint256 collateralisedDeposit2 = valueOfCSupplied().mul(collateralFactorMantissa).div(1e18);
-
-        uint256 supplyRate3 = xInv.supplyRatePerBlock();
-        uint256 collateralisedDeposit3 = valueOfxInv().mul(collateralFactorMantissa).div(1e18);
-
-        uint256 borrowBalance = valueOfBorrowedOwed();
-        uint256 borrrowRate = cBorrowed.borrowRatePerBlock();
-
-        uint256 denom1 = borrowBalance.mul(borrrowRate);
-        uint256 denom2 = collateralisedDeposit1.mul(supplyRate1).add(collateralisedDeposit2.mul(supplyRate2)).add(collateralisedDeposit3.mul(supplyRate3));
-
-        if (denom2 >= denom1) {
-            return uint256(- 1);
-        } else {
-            uint256 numer = collateralisedDeposit1.add(collateralisedDeposit2).add(collateralisedDeposit3).sub(borrowBalance);
-            uint256 denom = denom1 - denom2;
-            //minus 1 for this block
-            return numer.mul(1e18).div(denom);
-        }
-    }
+    //    function blocksUntilLiquidation() public view returns (uint256) {
+    //        (, uint256 collateralFactorMantissa,) = comptroller.markets(address(cBorrowed));
+    //
+    //        uint256 supplyRate1 = cWant.supplyRatePerBlock();
+    //        uint256 collateralisedDeposit1 = valueOfCWant().mul(collateralFactorMantissa).div(1e18);
+    //
+    //        uint256 supplyRate2 = cSupplied.supplyRatePerBlock();
+    //        uint256 collateralisedDeposit2 = valueOfCSupplied().mul(collateralFactorMantissa).div(1e18);
+    //
+    //        uint256 supplyRate3 = xInv.supplyRatePerBlock();
+    //        uint256 collateralisedDeposit3 = valueOfxInv().mul(collateralFactorMantissa).div(1e18);
+    //
+    //        uint256 borrowBalance = valueOfBorrowedOwed();
+    //        uint256 borrrowRate = cBorrowed.borrowRatePerBlock();
+    //
+    //        uint256 denom1 = borrowBalance.mul(borrrowRate);
+    //        uint256 denom2 = collateralisedDeposit1.mul(supplyRate1).add(collateralisedDeposit2.mul(supplyRate2)).add(collateralisedDeposit3.mul(supplyRate3));
+    //
+    //        if (denom2 >= denom1) {
+    //            return uint256(- 1);
+    //        } else {
+    //            uint256 numer = collateralisedDeposit1.add(collateralisedDeposit2).add(collateralisedDeposit3).sub(borrowBalance);
+    //            uint256 denom = denom1 - denom2;
+    //            //minus 1 for this block
+    //            return numer.mul(1e18).div(denom);
+    //        }
+    //    }
 
     // free up _amountUnderlying worth of borrowed while maintaining targetCollateralRatio.
     // function will try to free up as much as it can safely
     // @param redeem: True will redeem to cToken.underlying. False will remain as cToken
     function safeUnwindCTokenUnderlying(uint256 _amountUnderlying, CErc20Interface _cToken, bool redeem) internal {
-        // emit Debug("_safeUnwindCTokenUnderlying");
         _cToken.accrueInterest();
         uint256 _amountUnderlyingInUsd = estimateAmountUnderlyingInUsd(_amountUnderlying, _cToken);
 
@@ -288,9 +276,7 @@ contract Strategy is BaseStrategy {
         }
     }
 
-    function safeRedeem(uint256 _amountToRedeemUnderlying, CErc20Interface _cToken) internal returns (uint256 _amountRedeemedUnderlying){
-        uint256 _before = IERC20(_cToken.underlying()).balanceOf(address(this));
-
+    function safeRedeem(uint256 _amountToRedeemUnderlying, CErc20Interface _cToken) internal returns (bool redeemed){
         _cToken.accrueInterest();
         uint256 _valueCollatToMaintain = valueOfBorrowedOwed().mul(1 ether).div(targetCollateralFactor);
         uint256 _valueTotalCollateral = valueOfTotalCollateral();
@@ -310,9 +296,7 @@ contract Strategy is BaseStrategy {
 
         // lastly, bc cToken has less decimal precision, _amountSafeRedeemableInUnderlying has to be redeemable with atleast > 1 cToken
         if (_amountSafeRedeemableInUnderlying > minRedeemPrecision) {
-            if (_cToken.redeemUnderlying(_amountSafeRedeemableInUnderlying) == NO_ERROR) {
-                return IERC20(_cToken.underlying()).balanceOf(address(this)).sub(_before);
-            }
+            return (_cToken.redeemUnderlying(_amountSafeRedeemableInUnderlying) == NO_ERROR);
         }
     }
 
@@ -357,7 +341,6 @@ contract Strategy is BaseStrategy {
         } else if (!_neg) {
             // overcollateralized, can borrow more
             uint256 _adjustmentInBorrowed = estimateAmountUsdInUnderlying(_adjustmentInUsd, cBorrowed);
-            //            emit Debug("rebalance _adjustmentInBorrowed", _adjustmentInBorrowed);
 
             assert(cBorrowed.borrow(_adjustmentInBorrowed) == NO_ERROR);
             uint256 _actualBorrowed = address(this).balance;
@@ -365,7 +348,6 @@ contract Strategy is BaseStrategy {
             // wrap ether
             weth.deposit{value : _actualBorrowed}();
             uint256 _wethBalanace = weth.balanceOf(address(this));
-            // emit Debug("rebalance _actualBorrowed", _wethBalanace);
 
             delegatedVault.deposit(_wethBalanace);
         } else {
@@ -395,12 +377,13 @@ contract Strategy is BaseStrategy {
                     _remainingRepayment = _borrowedOwed;
                 }
 
-                uint256 _exactWantRequired = router.getAmountsIn(_remainingRepayment, wantWethPath)[0];
-                uint256 _amountRedeemed = safeRedeem(_exactWantRequired, cWant);
-                if (_amountRedeemed > 0) {
-                    router.swapTokensForExactTokens(_remainingRepayment, _amountRedeemed, wantWethPath, address(this), now);
-                    weth.withdraw(weth.balanceOf(address(this)));
-                    cBorrowed.repayBorrow{value : balanceOfEth()}();
+                if (_remainingRepayment > 0) {
+                    uint256 _exactWantRequired = router.getAmountsIn(_remainingRepayment, wantWethPath)[0];
+                    if (safeRedeem(_exactWantRequired, cWant)) {
+                        router.swapTokensForExactTokens(_remainingRepayment, balanceOfWant(), wantWethPath, address(this), now);
+                        weth.withdraw(weth.balanceOf(address(this)));
+                        cBorrowed.repayBorrow{value : balanceOfEth()}();
+                    }
                 }
             }
         }
@@ -412,20 +395,15 @@ contract Strategy is BaseStrategy {
         uint256 _valueOfBorrowed = valueOfBorrowedOwed();
         uint256 _valueOfDelegated = valueOfDelegated();
 
-        // emit Debug("sell _debt", _debt);
-        // emit Debug("sell _totalAssets", _totalAssets);
-
         if (_valueOfDelegated > _valueOfBorrowed) {
             uint256 _valueOfProfit = _valueOfDelegated.sub(_valueOfBorrowed);
             uint256 _amountInShares = estimateAmountBorrowedInShares(estimateAmountUsdInUnderlying(_valueOfProfit, cBorrowed));
-            // emit Debug("sell _amountInShares", _amountInShares);
 
             if (_amountInShares >= delegatedVault.balanceOf(address(this))) {
                 // max uint256 is uniquely set to withdraw everything
                 _amountInShares = uint256(- 1);
             }
             uint256 _actualWithdrawn = delegatedVault.withdraw(_amountInShares);
-            // emit Debug("sell _actualWithdrawn", _actualWithdrawn);
             // sell to want
             if (_actualWithdrawn > 0) {
                 router.swapExactTokensForTokens(_actualWithdrawn, 0, path, address(this), now);
@@ -437,12 +415,9 @@ contract Strategy is BaseStrategy {
         cWant.accrueInterest();
         uint256 _debt = vault.strategies(address(this)).totalDebt;
         uint256 _totalAssets = estimateAmountUsdInUnderlying(valueOfCWant(), cWant);
-        emit Debug("sell _debt", _debt);
-        emit Debug("sell _totalAssets", _totalAssets);
 
         if (_totalAssets > _debt) {
             uint256 _amountProfitInWant = _totalAssets.sub(_debt);
-            emit Debug("sell _amountProfitInWant", _amountProfitInWant);
             safeRedeem(_amountProfitInWant, cWant);
         }
     }
@@ -512,15 +487,6 @@ contract Strategy is BaseStrategy {
     function estimateAmountCTokenInUnderlying(uint256 _amountCToken, CTokenInterface cToken) internal view returns (uint256){
         uint256 _underlyingPerCToken = cToken.exchangeRateStored();
         return _amountCToken.mul(_underlyingPerCToken).div(1 ether);
-    }
-
-    function estimateAmountUnderlyingInCToken(uint256 _amountUnderlying, CTokenInterface cToken) internal view returns (uint256){
-        uint256 _underlyingPerCToken = cToken.exchangeRateStored();
-        return _amountUnderlying.mul(1 ether).div(_underlyingPerCToken);
-    }
-
-    function currentCollateralFactor() internal view returns (uint256){
-        return valueOfBorrowedOwed().mul(1 ether).div(valueOfTotalCollateral());
     }
 
     // used after a migration to redeem escrowed INV tokens that can then be swept by gov
