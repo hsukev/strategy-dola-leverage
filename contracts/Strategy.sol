@@ -290,17 +290,35 @@ contract Strategy is BaseStrategy {
         // cTokens are now freed up
 
         if (redeem) {
-            uint256 _valueCollatToMaintain = valueOfBorrowedOwed().mul(1 ether).div(targetCollateralFactor);
-            uint256 _valueCollatRedeemable = valueOfTotalCollateral().sub(_valueCollatToMaintain);
-            uint256 _amountCollatRedeemableInUnderlying = estimateAmountUsdInUnderlying(_valueCollatRedeemable, _cToken);
             uint256 _amountCTokenInUnderlying = estimateAmountCTokenInUnderlying(_cToken.balanceOf(address(this)), _cToken);
-            uint256 _amountMarketCashInUnderlying = _cToken.getCash();
+            safeRedeem(_amountCTokenInUnderlying, _cToken);
+        }
+    }
 
-            // min of (market's cash available, safe amount redeemable for strat, cToken as underlying in strat)
-            uint256 _valueUnderlyingRedeemable = Math.min(_amountCollatRedeemableInUnderlying, _amountCTokenInUnderlying);
-            _valueUnderlyingRedeemable = Math.min(_valueUnderlyingRedeemable, _amountMarketCashInUnderlying);
-            if (_valueCollatRedeemable > minRedeemPrecision) {
-                assert(_cToken.redeemUnderlying(_valueUnderlyingRedeemable) == NO_ERROR);
+    function safeRedeem(uint256 _amountToRedeemUnderlying, CErc20Interface _cToken) internal returns (uint256 _amountRedeemedUnderlying){
+        uint256 _before = IERC20(_cToken.underlying()).balanceOf(address(this));
+
+        _cToken.accrueInterest();
+        uint256 _valueCollatToMaintain = valueOfBorrowedOwed().mul(1 ether).div(targetCollateralFactor);
+        uint256 _valueTotalCollateral = valueOfTotalCollateral();
+        uint256 _valueCollatRedeemable = 0;
+        if (_valueTotalCollateral > _valueCollatToMaintain) {
+            _valueCollatRedeemable = _valueTotalCollateral.sub(_valueCollatToMaintain);
+        }
+        uint256 _amountCollatRedeemableInUnderlying = estimateAmountUsdInUnderlying(_valueCollatRedeemable, _cToken);
+        uint256 _amountMarketCashInUnderlying = _cToken.getCash();
+
+        // find the minimum of:
+        // _amountToRedeemUnderlying = amount we want to redeem
+        // _amountCollatRedeemableInUnderlying = amount safe to redeem while maintaining safe collat ratio
+        // _amountMarketCashInUnderlying = amount of underlying that the market can let you redeem
+        uint256 _amountSafeRedeemableInUnderlying = Math.min(_amountCollatRedeemableInUnderlying, _amountToRedeemUnderlying);
+        _amountSafeRedeemableInUnderlying = Math.min(_amountSafeRedeemableInUnderlying, _amountMarketCashInUnderlying);
+
+        // lastly, bc cToken has less decimal precision, _amountSafeRedeemableInUnderlying has to be redeemable with atleast > 1 cToken
+        if (_amountSafeRedeemableInUnderlying > minRedeemPrecision) {
+            if (_cToken.redeemUnderlying(_amountSafeRedeemableInUnderlying) == NO_ERROR) {
+                return IERC20(_cToken.underlying()).balanceOf(address(this)).sub(_before);
             }
         }
     }
@@ -384,14 +402,10 @@ contract Strategy is BaseStrategy {
                     _remainingRepayment = _borrowedOwed;
                 }
 
-                emit Debug("_safeUnwindCTokenUnderlying _redeemableInWant", _remainingRepayment);
                 uint256 _exactWantRequired = router.getAmountsIn(_remainingRepayment, wantWethPath)[0];
-                emit Debug("_safeUnwindCTokenUnderlying _exactWantRequired", _exactWantRequired);
-
-                // if underlying amount is less than cToken precision, redeeming will throw error
-                if (_exactWantRequired > minRedeemPrecision) {
-                    cWant.redeemUnderlying(_exactWantRequired);
-                    router.swapTokensForExactTokens(_remainingRepayment, balanceOfWant(), wantWethPath, address(this), now);
+                uint256 _amountRedeemed = safeRedeem(_exactWantRequired, cWant);
+                if (_amountRedeemed > 0) {
+                    router.swapTokensForExactTokens(_remainingRepayment, _amountRedeemed, wantWethPath, address(this), now);
                     weth.withdraw(weth.balanceOf(address(this)));
                     cBorrowed.repayBorrow{value : balanceOfEth()}();
                 }
