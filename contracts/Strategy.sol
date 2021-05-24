@@ -190,10 +190,7 @@ contract Strategy is BaseStrategy {
             // emit Debug("_liquidatePosition _amountNeeded", _amountNeeded);
 
             _liquidatedAmount = Math.min(_amountNeeded, _newLooseBalance);
-            if (_amountNeeded > _newLooseBalance) {
-                _loss = _amountNeeded.sub(_newLooseBalance);
-                // emit Debug("_liquidatePosition _loss", _loss);
-            }
+            _loss = _amountNeeded.sub(_liquidatedAmount);
         } else {
             _liquidatedAmount = _amountNeeded;
         }
