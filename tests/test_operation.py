@@ -191,16 +191,22 @@ def test_change_debt(
     vault.updateStrategyDebtRatio(strategy.address, 5_000, {"from": gov})
     strategy.harvest()
     half = int(amount / 2)
-
+    print('debtRatio 5000')
+    util.stateOfStrat(strategy, token)
     assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == half
 
     vault.updateStrategyDebtRatio(strategy.address, 10_000, {"from": gov})
     strategy.harvest()
+
+    print('debtRatio 10000')
+    util.stateOfStrat(strategy, token)
     assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
 
-    # In order to pass this tests, you will need to implement prepareReturn.
     vault.updateStrategyDebtRatio(strategy.address, 5_000, {"from": gov})
     strategy.harvest()
+
+    print('debtRatio 5000')
+    util.stateOfStrat(strategy, token)
     assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == half
 
 

@@ -308,7 +308,7 @@ contract Strategy is BaseStrategy {
         uint256 _valueCollaterals = valueOfTotalCollateral();
         if (_valueCollaterals < _amountPendingWithdrawInUsd) {
             neg = true;
-            _valueCollaterals = _amountPendingWithdrawInUsd.sub(_valueCollaterals);
+            _valueCollaterals = 0;
         } else {
             _valueCollaterals = _valueCollaterals.sub(_amountPendingWithdrawInUsd);
         }
