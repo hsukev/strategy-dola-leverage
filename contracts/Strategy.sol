@@ -303,27 +303,24 @@ contract Strategy is BaseStrategy {
     // Calculate adjustments on borrowing market to maintain targetCollateralFactor and borrowLimit
     // @param _amountPendingWithdrawInUsd should be left out of adjustment
     function calculateAdjustmentInUsd(uint256 _amountPendingWithdrawInUsd) internal returns (uint256 adjustmentUsd, bool neg){
+        uint256 _borrowTargetUsd;
         uint256 _valueCollaterals = valueOfTotalCollateral();
-        if (_valueCollaterals < _amountPendingWithdrawInUsd) {
-            neg = true;
-            _valueCollaterals = 0;
-        } else {
+        if (_valueCollaterals > _amountPendingWithdrawInUsd) {
             _valueCollaterals = _valueCollaterals.sub(_amountPendingWithdrawInUsd);
-        }
-        if (_valueCollaterals < repaymentLowerBound) {
-            _valueCollaterals = 0;
-        }
-        uint256 _borrowTargetUsd = _valueCollaterals.mul(targetCollateralFactor).div(1e18);
+            if (_valueCollaterals > repaymentLowerBound) {
+                _borrowTargetUsd = _valueCollaterals.mul(targetCollateralFactor).div(1e18);
 
-        uint256 _borrowLimitUsd = estimateAmountUnderlyingInUsd(borrowLimit, cBorrowed);
-        if (!neg && _borrowTargetUsd > _borrowLimitUsd) {
-            _borrowTargetUsd = _borrowLimitUsd;
+                // enforce borrow limit
+                uint256 _borrowLimitUsd = estimateAmountUnderlyingInUsd(borrowLimit, cBorrowed);
+                if (_borrowTargetUsd > _borrowLimitUsd) {
+                    _borrowTargetUsd = _borrowLimitUsd;
+                }
+            }
         }
+        // else, can't borrow a negative amount
 
         uint256 _borrowOwed = valueOfBorrowedOwed();
-        if (neg) {
-            adjustmentUsd = _borrowTargetUsd.add(_borrowOwed);
-        } else if (_borrowOwed > _borrowTargetUsd) {
+        if (_borrowOwed > _borrowTargetUsd) {
             neg = true;
             adjustmentUsd = _borrowOwed.sub(_borrowTargetUsd);
         } else {
