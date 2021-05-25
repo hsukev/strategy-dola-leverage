@@ -60,10 +60,10 @@ def test_emergency_exit(
     token.approve(vault.address, amount, {"from": user})
     vault.deposit(amount, {"from": user})
     strategy.setBorrowLimit(100 * 1e18)
-    print(f'vault pps: {vault.pricePerShare()}')
+    print(f'vault pps: {vault.pricePerShare()/1e18}')
     strategy.harvest()
-    print(f'vault pps: {vault.pricePerShare()}')
     assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
+    util.stateOfVault(vault, strategy, token)
 
     chain.sleep(3600 * 6)  # 6 hrs for pps to recover
     chain.mine(1)
@@ -79,6 +79,8 @@ def test_emergency_exit(
     util.stateOfStrat(strategy, token)
     # dust
     assert strategy.estimatedTotalAssets() < 1e12
+
+    util.stateOfVault(vault, strategy, token)
 
 
 def test_profitable_harvest(

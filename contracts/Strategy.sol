@@ -68,24 +68,20 @@ contract Strategy is BaseStrategy {
         borrowed = IERC20(delegatedVault.token());
         reward = IERC20(0x41D5D79431A913C4aE7d69a668ecdfE5fF9DFB68);
 
-        require(cWant.underlying() != address(borrowed), "can't be delegating to your own vault");
-        require(cWant.underlying() == address(want), "cWant does not match want");
-
-        require(address(cWant) != address(cBorrowed), "want and borrowed markets can't be the same");
-        require(address(cWant) != address(cSupplied), "want and supplied markets can't be the same");
-        require(address(cWant) != address(xInv), "want and reward markets can't be the same");
-        require(address(cBorrowed) != address(cSupplied), "borrowed and supplied markets can't be the same");
-        require(address(cBorrowed) != address(xInv), "borrowed and reward markets can't be the same");
-        require(address(cSupplied) != address(xInv), "supplied and reward markets can't be the same");
+        require(cWant.underlying() != address(borrowed));
+        require(cWant.underlying() == address(want));
+        require(address(cWant) != address(cBorrowed));
+        require(address(cWant) != address(cSupplied));
+        require(address(cWant) != address(xInv));
+        require(address(cBorrowed) != address(cSupplied));
+        require(address(cBorrowed) != address(xInv));
+        require(address(cSupplied) != address(xInv));
 
         path = [delegatedVault.token(), address(want)];
         wethWantPath = [address(weth), address(want)];
         wantWethPath = [address(want), address(weth)];
 
-        claimableMarkets = new address[](3);
-        claimableMarkets[0] = address(cWant);
-        claimableMarkets[1] = address(cBorrowed);
-        claimableMarkets[2] = address(cSupplied);
+        claimableMarkets = [address(cWant), address(cBorrowed), address(cSupplied)];
         comptroller.enterMarkets(claimableMarkets);
         // 50%
         targetCollateralFactor = 0.5 ether;
@@ -190,7 +186,7 @@ contract Strategy is BaseStrategy {
         }
         uint256 currentCF = valueOfBorrowedOwed().mul(1 ether).div(valueOfTotalCollateral());
         bool isWithinCFRange = targetCollateralFactor.sub(collateralTolerance) < currentCF && currentCF < targetCollateralFactor.add(collateralTolerance);
-        //        blocksUntilLiquidation() <= blocksToLiquidationDangerZone ||
+        // return !isWithinCFRange || blocksUntilLiquidation() <= blocksToLiquidationDangerZone;
         return !isWithinCFRange;
     }
 
@@ -227,38 +223,38 @@ contract Strategy is BaseStrategy {
     // Helpers
     //
 
-    //     calculate how long until assets can become liquidated based on:
-    //       - supply rate of the collateral tokens: want, supplied, and reward
-    //       - the borrow rate of the borrowed token
-    //       - required collateral factor of the borrowed token
-    //     ((deposits*colateralThreshold - borrows) / (borrows*borrowrate - deposits*colateralThreshold*interestrate));
-    //    function blocksUntilLiquidation() public view returns (uint256) {
-    //        (, uint256 collateralFactorMantissa,) = comptroller.markets(address(cBorrowed));
-    //
-    //        uint256 supplyRate1 = cWant.supplyRatePerBlock();
-    //        uint256 collateralisedDeposit1 = valueOfCWant().mul(collateralFactorMantissa).div(1e18);
-    //
-    //        uint256 supplyRate2 = cSupplied.supplyRatePerBlock();
-    //        uint256 collateralisedDeposit2 = valueOfCSupplied().mul(collateralFactorMantissa).div(1e18);
-    //
-    //        uint256 supplyRate3 = xInv.supplyRatePerBlock();
-    //        uint256 collateralisedDeposit3 = valueOfxInv().mul(collateralFactorMantissa).div(1e18);
-    //
-    //        uint256 borrowBalance = valueOfBorrowedOwed();
-    //        uint256 borrrowRate = cBorrowed.borrowRatePerBlock();
-    //
-    //        uint256 denom1 = borrowBalance.mul(borrrowRate);
-    //        uint256 denom2 = collateralisedDeposit1.mul(supplyRate1).add(collateralisedDeposit2.mul(supplyRate2)).add(collateralisedDeposit3.mul(supplyRate3));
-    //
-    //        if (denom2 >= denom1) {
-    //            return uint256(- 1);
-    //        } else {
-    //            uint256 numer = collateralisedDeposit1.add(collateralisedDeposit2).add(collateralisedDeposit3).sub(borrowBalance);
-    //            uint256 denom = denom1 - denom2;
-    //            //minus 1 for this block
-    //            return numer.mul(1e18).div(denom);
-    //        }
-    //    }
+    // // calculate how long until assets can become liquidated based on:
+    // //     - supply rate of the collateral tokens: want, supplied, and reward
+    // //     - the borrow rate of the borrowed token
+    // //     - required collateral factor of the borrowed token
+    // // ((deposits*colateralThreshold - borrows) / (borrows*borrowrate - deposits*colateralThreshold*interestrate));
+    // function blocksUntilLiquidation() public view returns (uint256) {
+    //     (, uint256 collateralFactorMantissa,) = comptroller.markets(address(cBorrowed));
+
+    //     uint256 supplyRate1 = cWant.supplyRatePerBlock();
+    //     uint256 collateralisedDeposit1 = valueOfCWant().mul(collateralFactorMantissa).div(1e18);
+
+    //     uint256 supplyRate2 = cSupplied.supplyRatePerBlock();
+    //     uint256 collateralisedDeposit2 = valueOfCSupplied().mul(collateralFactorMantissa).div(1e18);
+
+    //     uint256 supplyRate3 = xInv.supplyRatePerBlock();
+    //     uint256 collateralisedDeposit3 = valueOfxInv().mul(collateralFactorMantissa).div(1e18);
+
+    //     uint256 borrowBalance = valueOfBorrowedOwed();
+    //     uint256 borrrowRate = cBorrowed.borrowRatePerBlock();
+
+    //     uint256 denom1 = borrowBalance.mul(borrrowRate);
+    //     uint256 denom2 = collateralisedDeposit1.mul(supplyRate1).add(collateralisedDeposit2.mul(supplyRate2)).add(collateralisedDeposit3.mul(supplyRate3));
+
+    //     if (denom2 >= denom1) {
+    //         return uint256(- 1);
+    //     } else {
+    //         uint256 numer = collateralisedDeposit1.add(collateralisedDeposit2).add(collateralisedDeposit3).sub(borrowBalance);
+    //         uint256 denom = denom1 - denom2;
+    //         //minus 1 for this block
+    //         return numer.mul(1e18).div(denom);
+    //     }
+    // }
 
     // free up _amountUnderlying worth of borrowed while maintaining targetCollateralRatio.
     // function will try to free up as much as it can safely
