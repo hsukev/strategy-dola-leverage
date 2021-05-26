@@ -88,12 +88,12 @@ contract Strategy is BaseStrategy {
         // 1%
         collateralTolerance = 0.01 ether;
 
-        want.safeApprove(address(cWant), uint256(- 1));
-        want.safeApprove(address(router), uint256(- 1));
-        borrowed.safeApprove(address(delegatedVault), uint256(- 1));
-        weth.approve(address(this), uint256(- 1));
-        weth.approve(address(router), uint256(- 1));
-        reward.approve(address(xInv), uint256(- 1));
+        want.safeApprove(address(cWant), type(uint256).max);
+        want.safeApprove(address(router), type(uint256).max);
+        borrowed.safeApprove(address(delegatedVault), type(uint256).max);
+        weth.approve(address(this), type(uint256).max);
+        weth.approve(address(router), type(uint256).max);
+        reward.approve(address(xInv), type(uint256).max);
 
         minRedeemPrecision = 10 ** (vault.decimals() - cWant.decimals());
 
@@ -186,8 +186,8 @@ contract Strategy is BaseStrategy {
         }
         uint256 currentCF = valueOfBorrowedOwed().mul(1 ether).div(valueOfTotalCollateral());
         bool isWithinCFRange = targetCollateralFactor.sub(collateralTolerance) < currentCF && currentCF < targetCollateralFactor.add(collateralTolerance);
-        // return !isWithinCFRange || blocksUntilLiquidation() <= blocksToLiquidationDangerZone;
-        return !isWithinCFRange;
+        return !isWithinCFRange || blocksUntilLiquidation() <= blocksToLiquidationDangerZone;
+        // return !isWithinCFRange;
     }
 
     function prepareMigration(address _newStrategy) internal override {
@@ -223,38 +223,38 @@ contract Strategy is BaseStrategy {
     // Helpers
     //
 
-    // // calculate how long until assets can become liquidated based on:
-    // //     - supply rate of the collateral tokens: want, supplied, and reward
-    // //     - the borrow rate of the borrowed token
-    // //     - required collateral factor of the borrowed token
-    // // ((deposits*colateralThreshold - borrows) / (borrows*borrowrate - deposits*colateralThreshold*interestrate));
-    // function blocksUntilLiquidation() public view returns (uint256) {
-    //     (, uint256 collateralFactorMantissa,) = comptroller.markets(address(cBorrowed));
+    // calculate how long until assets can become liquidated based on:
+    //     - supply rate of the collateral tokens: want, supplied, and reward
+    //     - the borrow rate of the borrowed token
+    //     - required collateral factor of the borrowed token
+    // ((deposits*colateralThreshold - borrows) / (borrows*borrowrate - deposits*colateralThreshold*interestrate));
+    function blocksUntilLiquidation() public view returns (uint256) {
+        (, uint256 collateralFactorMantissa,) = comptroller.markets(address(cBorrowed));
 
-    //     uint256 supplyRate1 = cWant.supplyRatePerBlock();
-    //     uint256 collateralisedDeposit1 = valueOfCWant().mul(collateralFactorMantissa).div(1e18);
+        uint256 supplyRate1 = cWant.supplyRatePerBlock();
+        uint256 collateralisedDeposit1 = valueOfCWant().mul(collateralFactorMantissa).div(1e18);
 
-    //     uint256 supplyRate2 = cSupplied.supplyRatePerBlock();
-    //     uint256 collateralisedDeposit2 = valueOfCSupplied().mul(collateralFactorMantissa).div(1e18);
+        uint256 supplyRate2 = cSupplied.supplyRatePerBlock();
+        uint256 collateralisedDeposit2 = valueOfCSupplied().mul(collateralFactorMantissa).div(1e18);
 
-    //     uint256 supplyRate3 = xInv.supplyRatePerBlock();
-    //     uint256 collateralisedDeposit3 = valueOfxInv().mul(collateralFactorMantissa).div(1e18);
+        uint256 supplyRate3 = xInv.supplyRatePerBlock();
+        uint256 collateralisedDeposit3 = valueOfxInv().mul(collateralFactorMantissa).div(1e18);
 
-    //     uint256 borrowBalance = valueOfBorrowedOwed();
-    //     uint256 borrrowRate = cBorrowed.borrowRatePerBlock();
+        uint256 borrowBalance = valueOfBorrowedOwed();
+        uint256 borrrowRate = cBorrowed.borrowRatePerBlock();
 
-    //     uint256 denom1 = borrowBalance.mul(borrrowRate);
-    //     uint256 denom2 = collateralisedDeposit1.mul(supplyRate1).add(collateralisedDeposit2.mul(supplyRate2)).add(collateralisedDeposit3.mul(supplyRate3));
+        uint256 denom1 = borrowBalance.mul(borrrowRate);
+        uint256 denom2 = collateralisedDeposit1.mul(supplyRate1).add(collateralisedDeposit2.mul(supplyRate2)).add(collateralisedDeposit3.mul(supplyRate3));
 
-    //     if (denom2 >= denom1) {
-    //         return uint256(- 1);
-    //     } else {
-    //         uint256 numer = collateralisedDeposit1.add(collateralisedDeposit2).add(collateralisedDeposit3).sub(borrowBalance);
-    //         uint256 denom = denom1 - denom2;
-    //         //minus 1 for this block
-    //         return numer.mul(1e18).div(denom);
-    //     }
-    // }
+        if (denom2 >= denom1) {
+            return type(uint256).max;
+        } else {
+            uint256 numer = collateralisedDeposit1.add(collateralisedDeposit2).add(collateralisedDeposit3).sub(borrowBalance);
+            uint256 denom = denom1 - denom2;
+            //minus 1 for this block
+            return numer.mul(1e18).div(denom);
+        }
+    }
 
     // free up _amountUnderlying worth of borrowed while maintaining targetCollateralRatio.
     // function will try to free up as much as it can safely
@@ -394,7 +394,7 @@ contract Strategy is BaseStrategy {
 
             if (_amountInShares >= delegatedVault.balanceOf(address(this))) {
                 // max uint256 is uniquely set to withdraw everything
-                _amountInShares = uint256(- 1);
+                _amountInShares = type(uint256).max;
             }
             uint256 _actualWithdrawn = delegatedVault.withdraw(_amountInShares);
             // sell to want
@@ -542,8 +542,8 @@ contract Strategy is BaseStrategy {
 
     // @param _amount in cToken from the private marketa
     function supplyCollateral(uint256 _amount) external onlyInverseGovernance returns (bool){
-        cSupplied.approve(inverseGovernance, uint256(- 1));
-        cSupplied.approve(address(this), uint256(- 1));
+        cSupplied.approve(inverseGovernance, type(uint256).max);
+        cSupplied.approve(address(this), type(uint256).max);
         return cSupplied.transferFrom(inverseGovernance, address(this), _amount);
     }
 
