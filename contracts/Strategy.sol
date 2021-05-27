@@ -187,10 +187,14 @@ contract Strategy is BaseStrategy {
         if (harvestTrigger(ethToWant(callCostInWei))) {
             return false;
         }
-        uint256 currentCF = valueOfBorrowedOwed().mul(1 ether).div(valueOfTotalCollateral());
+        uint256 _valueCollateral = valueOfTotalCollateral();
+        if (_valueCollateral == 0) {
+            return false;
+        }
+        uint256 currentCF = valueOfBorrowedOwed().mul(1 ether).div(_valueCollateral);
         bool isWithinCFRange = targetCollateralFactor.sub(collateralTolerance) < currentCF && currentCF < targetCollateralFactor.add(collateralTolerance);
-        return !isWithinCFRange || blocksUntilLiquidation() <= blocksToLiquidationDangerZone;
-        // return !isWithinCFRange;
+        // return !isWithinCFRange || blocksUntilLiquidation() <= blocksToLiquidationDangerZone; # blocksUntilLiquidation() is busted
+        return !isWithinCFRange;
     }
 
     function prepareMigration(address _newStrategy) internal override {
