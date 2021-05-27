@@ -60,7 +60,7 @@ def test_emergency_exit(
     token.approve(vault.address, amount, {"from": user})
     vault.deposit(amount, {"from": user})
     strategy.setBorrowLimit(100 * 1e18)
-    print(f'vault pps: {vault.pricePerShare()/1e18}')
+    print(f'vault pps: {vault.pricePerShare() / 1e18}')
     strategy.harvest()
     assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
     util.stateOfVault(vault, strategy, token)
@@ -249,6 +249,43 @@ def test_change_debt_with_injection(
     print('debtRatio 5000')
     util.stateOfStrat(strategy, token)
     assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == half
+
+
+def test_collateral_factor(token, vault, cBorrowed, strategy, user, strategist, amount, RELATIVE_APPROX, weth, weth_whale, delegatedVault, chain):
+    # Deposit to the vault
+    token.approve(vault.address, amount, {"from": user})
+    strategy.setBorrowLimit(1000 * 1e18, {"from": strategist})
+    vault.deposit(amount, {"from": user})
+    assert token.balanceOf(vault.address) == amount
+
+    with brownie.reverts("target collateral factor too low!!"):
+        strategy.setTargetCollateralFactor(.01 * 1e18)
+    with brownie.reverts("target collateral factor too high!!"):
+        strategy.setTargetCollateralFactor(.6 * 1e18)
+
+    strategy.setTargetCollateralFactor(.1 * 1e18)
+    strategy.harvest({"from": strategist})
+    util.stateOfStrat(strategy, token)
+    util.stateOfVault(vault, strategy, token)
+
+    strategy.setTargetCollateralFactor(.5 * 1e18)
+    strategy.harvest({"from": strategist})
+    util.stateOfStrat(strategy, token)
+    util.stateOfVault(vault, strategy, token)
+
+    # give it some profits
+    weth.transfer(delegatedVault, Wei("20_000 ether"), {"from": weth_whale})  # simulate delegated vault interest
+    strategy.harvest()
+    chain.sleep(3600 * 6)  # 6 hrs needed for profits to unlock
+    chain.mine(1)
+
+    util.stateOfStrat(strategy, token)
+    util.stateOfVault(vault, strategy, token)
+
+    strategy.setTargetCollateralFactor(.1 * 1e18)
+    strategy.harvest({"from": strategist})
+    util.stateOfStrat(strategy, token)
+    util.stateOfVault(vault, strategy, token)
 
 
 def test_borrow_limit(token, vault, cBorrowed, strategy, user, strategist, amount, RELATIVE_APPROX):

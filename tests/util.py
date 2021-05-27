@@ -2,6 +2,7 @@
 
 def stateOfStrat(strategy, token):
     print('\n-----State of Strat-----')
+    print('targetCF : ', strategy.targetCollateralFactor()/1e18)
     print('balanceOfWant : ', strategy.balanceOfWant())
     print('balanceOfReward: ', strategy.balanceOfReward())
     print('balanceOfEth: ', strategy.balanceOfEth())

@@ -142,6 +142,9 @@ contract Strategy is BaseStrategy {
         _sellLendingProfits();
 
         uint256 _balanceAfterProfit = balanceOfWant();
+        emit Debug("_balanceAfterProfit",_balanceAfterProfit);
+        emit Debug("_debtOutstanding",_debtOutstanding);
+
         if (_balanceAfterProfit > _looseBalance) {
             _profit = _balanceAfterProfit.sub(_looseBalance);
         }
@@ -382,6 +385,7 @@ contract Strategy is BaseStrategy {
         }
     }
 
+    event Debug(string message, uint256 amount);
     // sell profits earned from delegated vault
     function _sellDelegatedProfits() internal {
         cBorrowed.accrueInterest();
@@ -391,7 +395,8 @@ contract Strategy is BaseStrategy {
         if (_valueOfDelegated > _valueOfBorrowed) {
             uint256 _valueOfProfit = _valueOfDelegated.sub(_valueOfBorrowed);
             uint256 _amountInShares = estimateAmountBorrowedInShares(estimateAmountUsdInUnderlying(_valueOfProfit, cBorrowed));
-
+            emit Debug("_valueOfProfit", _valueOfProfit);
+            emit Debug("_amountInShares", _amountInShares);
             if (_amountInShares >= delegatedVault.balanceOf(address(this))) {
                 // max uint256 is uniquely set to withdraw everything
                 _amountInShares = type(uint256).max;
