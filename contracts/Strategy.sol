@@ -142,8 +142,8 @@ contract Strategy is BaseStrategy {
         _sellLendingProfits();
 
         uint256 _balanceAfterProfit = balanceOfWant();
-        emit Debug("_balanceAfterProfit",_balanceAfterProfit);
-        emit Debug("_debtOutstanding",_debtOutstanding);
+        emit Debug("_balanceAfterProfit", _balanceAfterProfit);
+        emit Debug("_debtOutstanding", _debtOutstanding);
 
         if (_balanceAfterProfit > _looseBalance) {
             _profit = _balanceAfterProfit.sub(_looseBalance);
@@ -199,7 +199,7 @@ contract Strategy is BaseStrategy {
 
     function prepareMigration(address _newStrategy) internal override {
         // borrowed position can't be transferred so need to unwind everything before migrating
-        liquidatePosition(estimatedTotalAssets());
+        liquidatePosition(type(uint256).max);
 
         reward.transfer(_newStrategy, balanceOfReward());
         borrowed.transfer(_newStrategy, borrowed.balanceOf(address(this)));
@@ -268,7 +268,7 @@ contract Strategy is BaseStrategy {
     // @param redeem: True will redeem to cToken.underlying. False will remain as cToken
     function safeUnwindCTokenUnderlying(uint256 _amountUnderlying, CErc20Interface _cToken, bool redeem) internal {
         _cToken.accrueInterest();
-        uint256 _amountUnderlyingInUsd = estimateAmountUnderlyingInUsd(_amountUnderlying, _cToken);
+        uint256 _amountUnderlyingInUsd = estimateAmountUnderlyingInUsd(Math.min(_amountUnderlying, estimatedTotalAssets()), _cToken);
 
         _rebalance(_amountUnderlyingInUsd);
         // cTokens are now freed up
