@@ -12,6 +12,11 @@ import "../interfaces/inverse.sol";
 import "../interfaces/uniswap.sol";
 import "../interfaces/weth.sol";
 
+interface IERC20Metadata is IERC20 {
+    function name() external view returns (string memory);
+    function symbol() external view returns (string memory);
+    function decimals() external view returns (uint8);
+}
 
 contract Strategy is BaseStrategy {
     using SafeERC20 for IERC20;
@@ -48,7 +53,7 @@ contract Strategy is BaseStrategy {
     uint256 public targetCollateralFactor;
     uint256 public collateralTolerance;
     uint256 public blocksToLiquidationDangerZone = uint256(7 days) / 13; // assuming 13 second block times
-    uint256 public borrowLimit = 0; // borrow nothing until set
+    uint256 public borrowLimit; // borrow nothing until set
     uint256 public repaymentLowerBound = 0.01 ether; // threshold for paying off borrowed dust
 
     constructor(address _vault, address _cWant, address _cBorrowed, address _delegatedVault) public BaseStrategy(_vault) {
@@ -107,8 +112,7 @@ contract Strategy is BaseStrategy {
     //
 
     function name() external view override returns (string memory) {
-        return "StrategyInverseDolaLeverage";
-        // return string(abi.encodePacked("StrategyInverse", IERC20Metadata(address(want)).symbol(), "Leverage"));
+        return string(abi.encodePacked("StrategyInverse", IERC20Metadata(address(want)).symbol(), "Leverage"));
     }
 
     // User portion of the delegated assets in want
@@ -127,8 +131,8 @@ contract Strategy is BaseStrategy {
         return balanceOfWant().add(estimateAmountUsdInUnderlying(valueOfCWant().add(valueOfDelegated()).sub(valueOfBorrowedOwed()), cWant));
     }
 
-    function ethToWant(uint256 _amtInWei) public view returns (uint256){
-        uint256 amountOut = 0;
+    function ethToWant(uint256 _amtInWei) internal view returns (uint256){
+        uint256 amountOut;
         if (_amtInWei > 0) {
             amountOut = router.getAmountsOut(_amtInWei, wethWantPath)[1];
         }
@@ -142,15 +146,13 @@ contract Strategy is BaseStrategy {
         _sellLendingProfits();
 
         uint256 _balanceAfterProfit = balanceOfWant();
-        emit Debug("_balanceAfterProfit", _balanceAfterProfit);
-        emit Debug("_debtOutstanding", _debtOutstanding);
-
         if (_balanceAfterProfit > _looseBalance) {
             _profit = _balanceAfterProfit.sub(_looseBalance);
         }
 
         if (_debtOutstanding > 0) {
-            (uint256 _amountLiquidated, uint256 _loss) = liquidatePosition(_debtOutstanding);
+            uint256 _amountLiquidated;
+            (_amountLiquidated, _loss) = liquidatePosition(_debtOutstanding);
             _debtPayment = Math.min(_debtOutstanding, _amountLiquidated);
             if (_loss > 0) {
                 _profit = 0;
@@ -353,7 +355,6 @@ contract Strategy is BaseStrategy {
         }
     }
 
-    event Debug(string message, uint256 amount);
     // sell profits earned from delegated vault
     function _sellDelegatedProfits() internal {
         cBorrowed.accrueInterest();
@@ -363,8 +364,6 @@ contract Strategy is BaseStrategy {
         if (_valueOfDelegated > _valueOfBorrowed) {
             uint256 _valueOfProfit = _valueOfDelegated.sub(_valueOfBorrowed);
             uint256 _amountInShares = estimateAmountBorrowedInShares(estimateAmountUsdInUnderlying(_valueOfProfit, cBorrowed));
-            emit Debug("_valueOfProfit", _valueOfProfit);
-            emit Debug("_amountInShares", _amountInShares);
             if (_amountInShares >= delegatedVault.balanceOf(address(this))) {
                 // max uint256 is uniquely set to withdraw everything
                 _amountInShares = type(uint256).max;
