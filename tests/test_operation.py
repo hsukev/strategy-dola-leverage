@@ -263,6 +263,7 @@ def test_collateral_factor(token, vault, cBorrowed, strategy, user, strategist, 
     strategy.setBorrowLimit(1000 * 1e18, {"from": strategist})
     vault.deposit(amount, {"from": user})
     assert token.balanceOf(vault.address) == amount
+    assert strategy.harvestTrigger(0) == True
     assert strategy.tendTrigger(0) == False
     strategy.harvest({"from": strategist})
     util.stateOfStrat(strategy, token)
@@ -274,12 +275,14 @@ def test_collateral_factor(token, vault, cBorrowed, strategy, user, strategist, 
         strategy.setTargetCollateralFactor(.6 * 1e18)
 
     strategy.setTargetCollateralFactor(.1 * 1e18)
+    assert strategy.harvestTrigger(0) == False
     assert strategy.tendTrigger(0) == True
     strategy.tend({"from": strategist})
     util.stateOfStrat(strategy, token)
     util.stateOfVault(vault, strategy, token)
 
     strategy.setTargetCollateralFactor(.5 * 1e18)
+    assert strategy.harvestTrigger(0) == False
     assert strategy.tendTrigger(0) == True
     strategy.tend({"from": strategist})
     util.stateOfStrat(strategy, token)
@@ -287,6 +290,7 @@ def test_collateral_factor(token, vault, cBorrowed, strategy, user, strategist, 
 
     # give it some profits
     weth.transfer(delegatedVault, Wei("20_000 ether"), {"from": weth_whale})  # simulate delegated vault interest
+    assert strategy.harvestTrigger(0) == True
     assert strategy.tendTrigger(0) == False
     strategy.harvest()
     chain.sleep(3600 * 6)  # 6 hrs needed for profits to unlock
@@ -296,8 +300,9 @@ def test_collateral_factor(token, vault, cBorrowed, strategy, user, strategist, 
     util.stateOfVault(vault, strategy, token)
 
     strategy.setTargetCollateralFactor(.1 * 1e18)
-    assert strategy.tendTrigger(0) == False # should this be true?
-    strategy.tend({"from": strategist})
+    assert strategy.harvestTrigger(0) == True
+    assert strategy.tendTrigger(0) == False
+    strategy.harvest({"from": strategist})
     util.stateOfStrat(strategy, token)
     util.stateOfVault(vault, strategy, token)
 
