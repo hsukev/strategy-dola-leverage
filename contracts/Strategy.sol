@@ -184,16 +184,13 @@ contract Strategy is BaseStrategy {
     }
 
     function tendTrigger(uint256 callCostInWei) public override virtual view returns (bool) {
-        if (harvestTrigger(ethToWant(callCostInWei))) {
-            return false;
-        }
         uint256 _valueCollateral = valueOfTotalCollateral();
-        if (_valueCollateral == 0) {
+        if (harvestTrigger(ethToWant(callCostInWei)) || _valueCollateral == 0) {
             return false;
         }
+
         uint256 currentCF = valueOfBorrowedOwed().mul(1 ether).div(_valueCollateral);
         bool isWithinCFRange = targetCollateralFactor.sub(collateralTolerance) < currentCF && currentCF < targetCollateralFactor.add(collateralTolerance);
-        // return !isWithinCFRange || blocksUntilLiquidation() <= blocksToLiquidationDangerZone; # blocksUntilLiquidation() is busted
         return !isWithinCFRange;
     }
 
@@ -229,39 +226,6 @@ contract Strategy is BaseStrategy {
     //
     // Helpers
     //
-
-    // calculate how long until assets can become liquidated based on:
-    //     - supply rate of the collateral tokens: want, supplied, and reward
-    //     - the borrow rate of the borrowed token
-    //     - required collateral factor of the borrowed token
-    // ((deposits*colateralThreshold - borrows) / (borrows*borrowrate - deposits*colateralThreshold*interestrate));
-    function blocksUntilLiquidation() public view returns (uint256) {
-        (, uint256 collateralFactorMantissa,) = comptroller.markets(address(cBorrowed));
-
-        uint256 supplyRate1 = cWant.supplyRatePerBlock();
-        uint256 collateralisedDeposit1 = valueOfCWant().mul(collateralFactorMantissa).div(1e18);
-
-        uint256 supplyRate2 = cSupplied.supplyRatePerBlock();
-        uint256 collateralisedDeposit2 = valueOfCSupplied().mul(collateralFactorMantissa).div(1e18);
-
-        uint256 supplyRate3 = xInv.supplyRatePerBlock();
-        uint256 collateralisedDeposit3 = valueOfxInv().mul(collateralFactorMantissa).div(1e18);
-
-        uint256 borrowBalance = valueOfBorrowedOwed();
-        uint256 borrrowRate = cBorrowed.borrowRatePerBlock();
-
-        uint256 denom1 = borrowBalance.mul(borrrowRate);
-        uint256 denom2 = collateralisedDeposit1.mul(supplyRate1).add(collateralisedDeposit2.mul(supplyRate2)).add(collateralisedDeposit3.mul(supplyRate3));
-
-        if (denom2 >= denom1) {
-            return type(uint256).max;
-        } else {
-            uint256 numer = collateralisedDeposit1.add(collateralisedDeposit2).add(collateralisedDeposit3).sub(borrowBalance);
-            uint256 denom = denom1 - denom2;
-            //minus 1 for this block
-            return numer.mul(1e18).div(denom);
-        }
-    }
 
     // free up _amountUnderlying worth of borrowed while maintaining targetCollateralRatio.
     // function will try to free up as much as it can safely
@@ -512,7 +476,6 @@ contract Strategy is BaseStrategy {
         require(_targetMantissa > collateralTolerance, "target collateral factor too low!!");
 
         targetCollateralFactor = _targetMantissa;
-        _rebalance(0);
     }
 
     function setRouter(address _address) external onlyGovernance {
