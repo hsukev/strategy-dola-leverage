@@ -41,7 +41,7 @@ contract Strategy is BaseStrategy {
 
     IERC20 public borrowed;
     IERC20 public reward; // INV
-    IWETH9 constant public weth = IWETH9(address(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2));
+    IWETH9 internal weth = IWETH9(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
 
     address[] public path;
     address[] public wethWantPath;
@@ -52,9 +52,8 @@ contract Strategy is BaseStrategy {
     address public inverseGovernance;
     uint256 public targetCollateralFactor;
     uint256 public collateralTolerance;
-    uint256 public blocksToLiquidationDangerZone = uint256(7 days) / 13; // assuming 13 second block times
     uint256 public borrowLimit; // borrow nothing until set
-    uint256 public repaymentLowerBound = 0.01 ether; // threshold for paying off borrowed dust
+    uint256 internal repaymentLowerBound = 0.01 ether; // threshold for paying off borrowed dust
 
     constructor(address _vault, address _cWant, address _cBorrowed, address _delegatedVault) public BaseStrategy(_vault) {
         // TODO temporarily GovernorAlpha
@@ -118,25 +117,22 @@ contract Strategy is BaseStrategy {
     // User portion of the delegated assets in want
     function delegatedAssets() external override view returns (uint256) {
         uint256 _totalCollateral = valueOfTotalCollateral();
-        if (_totalCollateral > 0) {
-            uint256 _userDistribution = valueOfCWant().mul(1 ether).div(_totalCollateral);
-            uint256 _userDelegated = valueOfDelegated().mul(_userDistribution).div(1 ether);
-            return estimateAmountUsdInUnderlying(_userDelegated, cWant);
-        } else {
+        if (_totalCollateral == 0) {
             return 0;
         }
+
+        uint256 _userDelegated = valueOfDelegated().mul(valueOfCWant()).div(_totalCollateral);
+        return estimateAmountUsdInUnderlying(_userDelegated, cWant);
     }
 
     function estimatedTotalAssets() public view override returns (uint256) {
         return balanceOfWant().add(estimateAmountUsdInUnderlying(valueOfCWant().add(valueOfDelegated()).sub(valueOfBorrowedOwed()), cWant));
     }
 
-    function ethToWant(uint256 _amtInWei) internal view returns (uint256){
-        uint256 amountOut;
+    function ethToWant(uint256 _amtInWei) internal view returns (uint256 amountOut){
         if (_amtInWei > 0) {
             amountOut = router.getAmountsOut(_amtInWei, wethWantPath)[1];
         }
-        return amountOut;
     }
 
     function prepareReturn(uint256 _debtOutstanding) internal override returns (uint256 _profit, uint256 _loss, uint256 _debtPayment){
@@ -173,12 +169,12 @@ contract Strategy is BaseStrategy {
     function liquidatePosition(uint256 _amountNeeded) internal override returns (uint256 _liquidatedAmount, uint256 _loss){
         uint256 looseBalance = balanceOfWant();
         if (_amountNeeded > looseBalance) {
+            safeUnwindCTokenUnderlying(_amountNeeded.sub(looseBalance), cWant);
 
-            uint256 _desiredWithdraw = _amountNeeded.sub(looseBalance);
-            safeUnwindCTokenUnderlying(_desiredWithdraw, cWant, true);
-            uint256 _newLooseBalance = balanceOfWant();
+            uint256 _amountCTokenInUnderlying = estimateAmountCTokenInUnderlying(cWant.balanceOf(address(this)), cWant);
+            safeRedeem(_amountCTokenInUnderlying, cWant);
 
-            _liquidatedAmount = Math.min(_amountNeeded, _newLooseBalance);
+            _liquidatedAmount = Math.min(_amountNeeded, balanceOfWant());
             _loss = _amountNeeded.sub(_liquidatedAmount);
         } else {
             _liquidatedAmount = _amountNeeded;
@@ -191,9 +187,8 @@ contract Strategy is BaseStrategy {
             return false;
         }
 
-        uint256 currentCF = valueOfBorrowedOwed().mul(1 ether).div(_valueCollateral);
-        bool isWithinCFRange = targetCollateralFactor.sub(collateralTolerance) < currentCF && currentCF < targetCollateralFactor.add(collateralTolerance);
-        return !isWithinCFRange;
+        uint256 currentCF = valueOfBorrowedOwed().mul(1e18).div(_valueCollateral);
+        return targetCollateralFactor.sub(collateralTolerance) > currentCF || currentCF > targetCollateralFactor.add(collateralTolerance);
     }
 
     function prepareMigration(address _newStrategy) internal override {
@@ -232,22 +227,15 @@ contract Strategy is BaseStrategy {
     // free up _amountUnderlying worth of borrowed while maintaining targetCollateralRatio.
     // function will try to free up as much as it can safely
     // @param redeem: True will redeem to cToken.underlying. False will remain as cToken
-    function safeUnwindCTokenUnderlying(uint256 _amountUnderlying, CErc20Interface _cToken, bool redeem) internal {
+    function safeUnwindCTokenUnderlying(uint256 _amountUnderlying, CErc20Interface _cToken) internal {
         _cToken.accrueInterest();
-        uint256 _amountUnderlyingInUsd = estimateAmountUnderlyingInUsd(Math.min(_amountUnderlying, estimatedTotalAssets()), _cToken);
-
-        _rebalance(_amountUnderlyingInUsd);
+        _rebalance(estimateAmountUnderlyingInUsd(Math.min(_amountUnderlying, estimatedTotalAssets()), _cToken));
         // cTokens are now freed up
-
-        if (redeem) {
-            uint256 _amountCTokenInUnderlying = estimateAmountCTokenInUnderlying(_cToken.balanceOf(address(this)), _cToken);
-            safeRedeem(_amountCTokenInUnderlying, _cToken);
-        }
     }
 
     function safeRedeem(uint256 _amountToRedeemUnderlying, CErc20Interface _cToken) internal returns (bool redeemed){
         _cToken.accrueInterest();
-        uint256 _valueCollatToMaintain = valueOfBorrowedOwed().mul(1 ether).div(targetCollateralFactor);
+        uint256 _valueCollatToMaintain = valueOfBorrowedOwed().mul(1e18).div(targetCollateralFactor);
         uint256 _valueTotalCollateral = valueOfTotalCollateral();
         uint256 _valueCollatRedeemable = 0;
         if (_valueTotalCollateral > _valueCollatToMaintain) {
@@ -436,7 +424,7 @@ contract Strategy is BaseStrategy {
 
     function estimateAmountUnderlyingInUsd(uint256 _amountUnderlying, CTokenInterface cToken) internal view returns (uint256){
         uint256 _usdPerUnderlying = comptroller.oracle().getUnderlyingPrice(address(cToken));
-        return _amountUnderlying.mul(_usdPerUnderlying).div(1 ether);
+        return _amountUnderlying.mul(_usdPerUnderlying).div(1e18);
     }
 
     function estimateAmountUsdInUnderlying(uint256 _amountInUsd, CTokenInterface cToken) internal view returns (uint256){
@@ -451,7 +439,7 @@ contract Strategy is BaseStrategy {
 
     function estimateAmountCTokenInUnderlying(uint256 _amountCToken, CTokenInterface cToken) internal view returns (uint256){
         uint256 _underlyingPerCToken = cToken.exchangeRateStored();
-        return _amountCToken.mul(_underlyingPerCToken).div(1 ether);
+        return _amountCToken.mul(_underlyingPerCToken).div(1e18);
     }
 
     // used after a migration to redeem escrowed INV tokens that can then be swept by gov
@@ -471,8 +459,8 @@ contract Strategy is BaseStrategy {
 
     function setTargetCollateralFactor(uint256 _targetMantissa) external onlyAuthorized {
         (, uint256 _safeCollateralFactor,) = comptroller.markets(address(cWant));
-        require(_targetMantissa.add(collateralTolerance) < _safeCollateralFactor, "target collateral factor too high!!");
-        require(_targetMantissa > collateralTolerance, "target collateral factor too low!!");
+        require(_targetMantissa.add(collateralTolerance) < _safeCollateralFactor, "too high");
+        require(_targetMantissa > collateralTolerance, "too low");
 
         targetCollateralFactor = _targetMantissa;
     }
@@ -502,7 +490,7 @@ contract Strategy is BaseStrategy {
     }
 
     function setCSupplied(address _address) external onlyInverseGovernance {
-        require(_address != address(cWant), "supplied market cannot be same as want");
+        require(_address != address(cWant), "same as want");
 
         // comptroller.exitMarket(address(cSupplied));
         cSupplied = CErc20Interface(address(_address));
@@ -519,7 +507,7 @@ contract Strategy is BaseStrategy {
     }
 
     function removeCollateral(uint256 _amount) external onlyInverseGovernance {
-        safeUnwindCTokenUnderlying(estimateAmountCTokenInUnderlying(_amount, cSupplied), cSupplied, false);
+        safeUnwindCTokenUnderlying(estimateAmountCTokenInUnderlying(_amount, cSupplied), cSupplied);
         cSupplied.transfer(msg.sender, _amount);
     }
 }
