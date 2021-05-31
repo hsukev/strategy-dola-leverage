@@ -14,7 +14,9 @@ import "../interfaces/weth.sol";
 
 interface IERC20Metadata is IERC20 {
     function name() external view returns (string memory);
+
     function symbol() external view returns (string memory);
+
     function decimals() external view returns (uint8);
 }
 
@@ -453,10 +455,6 @@ contract Strategy is BaseStrategy {
     // Setters
     //
 
-    function setComptroller(address _newComptroller) external onlyAuthorized {
-        comptroller = ComptrollerInterface(address(_newComptroller));
-    }
-
     function setTargetCollateralFactor(uint256 _targetMantissa) external onlyAuthorized {
         (, uint256 _safeCollateralFactor,) = comptroller.markets(address(cWant));
         require(_targetMantissa.add(collateralTolerance) < _safeCollateralFactor, "too high");
@@ -466,6 +464,7 @@ contract Strategy is BaseStrategy {
     }
 
     function setRouter(address _address) external onlyGovernance {
+        want.safeApprove(address(router), type(uint256).max);
         router = IUniswapV2Router02(_address);
     }
 
@@ -508,6 +507,6 @@ contract Strategy is BaseStrategy {
 
     function removeCollateral(uint256 _amount) external onlyInverseGovernance {
         safeUnwindCTokenUnderlying(estimateAmountCTokenInUnderlying(_amount, cSupplied), cSupplied);
-        cSupplied.transfer(msg.sender, _amount);
+        cSupplied.transfer(msg.sender, Math.min(_amount, cSupplied.balanceOf(address(this))));
     }
 }
