@@ -269,9 +269,9 @@ def test_collateral_factor(token, vault, cBorrowed, strategy, user, strategist, 
     util.stateOfStrat(strategy, token)
     util.stateOfVault(vault, strategy, token)
 
-    with brownie.reverts("target collateral factor too low!!"):
+    with brownie.reverts("too low"):
         strategy.setTargetCollateralFactor(.01 * 1e18)
-    with brownie.reverts("target collateral factor too high!!"):
+    with brownie.reverts("too high"):
         strategy.setTargetCollateralFactor(.6 * 1e18)
 
     strategy.setTargetCollateralFactor(.1 * 1e18)
