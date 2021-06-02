@@ -165,7 +165,7 @@ contract Strategy is BaseStrategy {
         assert(cWant.mint(balanceOfWant()) == NO_ERROR);
         assert(xInv.mint(balanceOfReward()) == NO_ERROR);
 
-        _rebalance(_debtOutstanding);
+        _rebalance(estimateAmountUnderlyingInUsd(_debtOutstanding, cWant));
     }
 
     function liquidatePosition(uint256 _amountNeeded) internal override returns (uint256 _liquidatedAmount, uint256 _loss){
