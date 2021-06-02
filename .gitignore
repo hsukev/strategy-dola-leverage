@@ -10,3 +10,7 @@ reports/
 node_modules/
 
 .vscode
+.idea
+.github
+.pytest_cache
+.mypy_cache
