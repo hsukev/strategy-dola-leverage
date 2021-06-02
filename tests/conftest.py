@@ -1,6 +1,5 @@
 import pytest
-from brownie import config
-from brownie import Contract
+from brownie import Contract, config
 
 
 @pytest.fixture
@@ -45,12 +44,16 @@ def token(interface):
 
 
 @pytest.fixture
-def amount(accounts, token, user):
+def token_whale(accounts):
+    yield accounts.at("0x9547429C0e2c3A8B88C6833B58FCE962734C0E8C", force=True) # DOLA 3CRV Curve Metapool
+
+
+@pytest.fixture
+def amount(accounts, token, user, token_whale):
     amount = 100000 * 10 ** token.decimals()
     # In order to get some funds for the token you are about to use,
     # it impersonate an exchange address to use it's funds.
-    reserve = accounts.at("0x9547429C0e2c3A8B88C6833B58FCE962734C0E8C", force=True)  # DOLA 3CRV Curve Metapool
-    token.transfer(user, amount, {"from": reserve})
+    token.transfer(user, amount, {"from": token_whale})
     yield amount
 
 
