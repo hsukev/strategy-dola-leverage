@@ -43,18 +43,18 @@ def test_immediate_operation(
 
 # TODO: use asserts instead of just printing states
 def test_airdrop_want(
-    cWant,
-    chain,
-    accounts,
-    token,
-    vault,
-    strategy,
-    user,
-    strategist,
-    token_whale,
-    amount,
-    RELATIVE_APPROX,
-    delegatedVault,
+        cWant,
+        chain,
+        accounts,
+        token,
+        vault,
+        strategy,
+        user,
+        strategist,
+        token_whale,
+        amount,
+        RELATIVE_APPROX,
+        delegatedVault,
 ):
     # Deposit to the vault
     user_balance_before = token.balanceOf(user)
@@ -92,6 +92,7 @@ def test_airdrop_want(
 
     # withdrawal
     vault.withdraw({"from": user})
+    # the airdrop gets reported properly and set to vault as profit, but then it's deposited back into the vault? Maybe needs to add 6 hr pps recovery time
     user_balance_after = token.balanceOf(user)
     assert pytest.approx(user_balance_after, rel=RELATIVE_APPROX) == user_balance_before
     print("loss: ", (user_balance_before - user_balance_after) / 1e18)

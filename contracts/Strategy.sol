@@ -373,6 +373,7 @@ contract Strategy is BaseStrategy {
 
         if (_totalAssets > _debt) {
             uint256 _amountProfitInWant = _totalAssets.sub(_debt);
+            safeUnwindCTokenUnderlying(_amountProfitInWant, cWant);
             safeRedeem(_amountProfitInWant, cWant);
         }
     }
