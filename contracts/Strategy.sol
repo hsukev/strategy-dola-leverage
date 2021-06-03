@@ -236,10 +236,9 @@ contract Strategy is BaseStrategy {
     }
 
     function safeRedeem(uint256 _amountToRedeemUnderlying, CErc20Interface _cToken) internal returns (bool redeemed){
-        _cToken.accrueInterest();
         uint256 _valueCollatToMaintain = valueOfBorrowedOwed().mul(1e18).div(targetCollateralFactor);
         uint256 _valueTotalCollateral = valueOfTotalCollateral();
-        uint256 _valueCollatRedeemable = 0;
+        uint256 _valueCollatRedeemable;
         if (_valueTotalCollateral > _valueCollatToMaintain) {
             _valueCollatRedeemable = _valueTotalCollateral.sub(_valueCollatToMaintain);
         }
@@ -335,6 +334,7 @@ contract Strategy is BaseStrategy {
 
                 if (_remainingRepayment > 0) {
                     uint256 _exactWantRequired = router.getAmountsIn(_remainingRepayment, wantWethPath)[0];
+                    cWant.accrueInterest();
                     if (safeRedeem(_exactWantRequired, cWant)) {
                         router.swapTokensForExactTokens(_remainingRepayment, balanceOfWant(), wantWethPath, address(this), now);
                         weth.withdraw(weth.balanceOf(address(this)));
@@ -369,7 +369,7 @@ contract Strategy is BaseStrategy {
     function _sellLendingProfits() internal {
         cWant.accrueInterest();
         uint256 _debt = vault.strategies(address(this)).totalDebt;
-        uint256 _totalAssets = estimateAmountUsdInUnderlying(valueOfCWant(), cWant);
+        uint256 _totalAssets = balanceOfUnderlying(cWant);
 
         if (_totalAssets > _debt) {
             uint256 _amountProfitInWant = _totalAssets.sub(_debt);
