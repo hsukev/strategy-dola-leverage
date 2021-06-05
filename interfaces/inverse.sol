@@ -94,6 +94,9 @@ interface ComptrollerInterface {
     function compAccrued(address holder) external view returns (uint256 amount);
 
     function claimComp(address holder, address[] memory cTokens) external;
+
+    function getAccountLiquidity(address account) external view returns (uint error, uint liquidity, uint shortfall);
+
 }
 
 interface CTokenStorage {
