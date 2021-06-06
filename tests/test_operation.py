@@ -330,7 +330,6 @@ def test_change_debt(
     )  # simulate delegated vault interest
 
     vault.updateStrategyDebtRatio(strategy.address, 5_000, {"from": gov})
-    assert False
     strategy.harvest()
 
     print("debtRatio 5000")
