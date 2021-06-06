@@ -124,11 +124,11 @@ contract Strategy is BaseStrategy {
         }
 
         uint256 _userDelegated = valueOfDelegated().mul(valueOfCWant()).div(_totalCollateral);
-        return _usdToBase(_userDelegated, cWant);
+        return _usdToBase(_userDelegated, cWant, false);
     }
 
     function estimatedTotalAssets() public view override returns (uint256) {
-        return balanceOfWant().add(_usdToBase(valueOfCWant().add(valueOfDelegated()).sub(valueOfBorrowedOwed()), cWant));
+        return balanceOfWant().add(_usdToBase(valueOfCWant().add(valueOfDelegated()).sub(valueOfBorrowedOwed()), cWant, false));
     }
 
     function prepareReturn(uint256 _debtOutstanding) internal override returns (uint256 _profit, uint256 _loss, uint256 _debtPayment){
@@ -239,7 +239,7 @@ contract Strategy is BaseStrategy {
         if (_usdCollatNeeded > _usdCollatFree) {
             uint256 _usdMoreNeeded = _usdCollatNeeded.sub(_usdCollatFree);
             uint256 _usdBorrowToRepay = _needMax ? max : _usdMoreNeeded.mul(targetCollateralFactor).div(1e18);
-            uint256 _borrowed = _usdToBase(_usdBorrowToRepay, cBorrowed);
+            uint256 _borrowed = _usdToBase(_usdBorrowToRepay, cBorrowed, false);
             uint256 _shares = Math.min(_borrowedToShares(_borrowed), delegatedVault.balanceOf(address(this)));
 
             uint256 _borrowedWithdrawn = delegatedVault.withdraw(_shares);
@@ -247,7 +247,7 @@ contract Strategy is BaseStrategy {
             weth.withdraw(_borrowedWithdrawn);
             cBorrowed.repayBorrow{value : balanceOfEth()}();
 
-            uint256 _usdBorrowedRepaid = _baseToUsd(_borrowedWithdrawn, cBorrowed);
+            uint256 _usdBorrowedRepaid = _usdToBase(_borrowedWithdrawn, cBorrowed, true);
             uint256 _usdCollatFreedUp = _usdBorrowedRepaid.mul(1e18).div(targetCollateralFactor);
             emit Debug('_usdCollatFreedUp', _usdCollatFreedUp);
             if (_usdCollatNeeded > _usdCollatFreedUp) {
@@ -266,11 +266,11 @@ contract Strategy is BaseStrategy {
         }
         if (_usdMoreNeeded > _usdCollatFree) {
             uint256 _usdToRepay = _needMax ? max : _usdMoreNeeded.sub(_usdCollatFree).mul(targetCollateralFactor).div(1e18);
-            uint256 _borrowedToRepay = _usdToBase(_usdToRepay, cBorrowed);
+            uint256 _borrowedToRepay = _usdToBase(_usdToRepay, cBorrowed, false);
 
 
             uint256 _borrowedOwed = cBorrowed.borrowBalanceCurrent(address(this));
-            uint256 _usdBorrowedOwed = _baseToUsd(_borrowedOwed, cBorrowed);
+            uint256 _usdBorrowedOwed = _usdToBase(_borrowedOwed, cBorrowed, true);
             emit Debug('_usdBorrowedOwed', _usdBorrowedOwed);
 
             // if payment would leave borrowed dust or payment is lower than borrowed lower bound, pay everything
@@ -287,7 +287,7 @@ contract Strategy is BaseStrategy {
 
                 if (_wantToRepay > minRedeemPrecision) {
                     cWant.accrueInterest();
-                    _usdToRepay = _baseToUsd(_wantToRepay, cWant);
+                    _usdToRepay = _usdToBase(_wantToRepay, cWant, true);
                     emit Debug('usdCollatFree()', usdCollatFree());
                     emit Debug('valueOfCWant()', valueOfCWant());
 
@@ -313,9 +313,9 @@ contract Strategy is BaseStrategy {
     }
 
     function redeem(uint256 _wantNeeded) public returns (uint256 _wantShort){
-        freeUpCollateral(_baseToUsd(_wantNeeded, cWant), false);
+        freeUpCollateral(_usdToBase(_wantNeeded, cWant, true), false);
 
-        uint256 _wantAllowed = _usdToBase(usdCollatFree(), cWant);
+        uint256 _wantAllowed = _usdToBase(usdCollatFree(), cWant, false);
         uint256 _wantCash = cWant.getCash();
         uint256 _wantHeld = balanceOfBase(cWant);
 
@@ -339,7 +339,7 @@ contract Strategy is BaseStrategy {
         uint256 _usdBorrowTarget = _usdTotalCollat.mul(targetCollateralFactor).div(1e18);
 
         // enforce borrow limit
-        uint256 _usdBorrowLimit = _baseToUsd(borrowLimit, cBorrowed);
+        uint256 _usdBorrowLimit = _usdToBase(borrowLimit, cBorrowed, true);
         if (_usdBorrowTarget > _usdBorrowLimit) {
             _usdBorrowTarget = _usdBorrowLimit;
         }
@@ -363,7 +363,7 @@ contract Strategy is BaseStrategy {
             freeUpCollateral(_usdCollatToFree, true);
         } else if (_usdBorrowAdjustment > 0) {
             // overcollateralized, can borrow more
-            uint256 _borrowedAdjustment = _usdToBase(_usdBorrowAdjustment, cBorrowed);
+            uint256 _borrowedAdjustment = _usdToBase(_usdBorrowAdjustment, cBorrowed, false);
             assert(cBorrowed.borrow(_borrowedAdjustment) == NO_ERROR);
             uint256 _borrowedActual = address(this).balance;
             weth.deposit{value : _borrowedActual}();
@@ -380,7 +380,7 @@ contract Strategy is BaseStrategy {
 
         if (_valueOfDelegated > _valueOfBorrowed) {
             uint256 _valueOfProfit = _valueOfDelegated.sub(_valueOfBorrowed);
-            uint256 _amountInShares = _borrowedToShares(_usdToBase(_valueOfProfit, cBorrowed));
+            uint256 _amountInShares = _borrowedToShares(_usdToBase(_valueOfProfit, cBorrowed, false));
             if (_amountInShares >= delegatedVault.balanceOf(address(this))) {
                 // max uint256 is uniquely set to withdraw everything
                 _amountInShares = max;
@@ -422,17 +422,17 @@ contract Strategy is BaseStrategy {
 
     // Value of deposited want in USD
     function valueOfCWant() public view returns (uint256){
-        return _baseToUsd(balanceOfBase(cWant), cWant);
+        return _usdToBase(balanceOfBase(cWant), cWant, true);
     }
 
     // Value of Inverse supplied tokens in USD
     function valueOfCSupplied() public view returns (uint256){
-        return _baseToUsd(balanceOfBase(cSupplied), cSupplied);
+        return _usdToBase(balanceOfBase(cSupplied), cSupplied, true);
     }
 
     // Value of reward tokens in USD
     function valueOfxInv() public view returns (uint256){
-        return _baseToUsd(balanceOfBase(xInv), xInv);
+        return _usdToBase(balanceOfBase(xInv), xInv, true);
     }
 
     function valueOfTotalCollateral() public view returns (uint256){
@@ -441,25 +441,23 @@ contract Strategy is BaseStrategy {
 
     // Value of borrowed tokens in USD
     function valueOfBorrowedOwed() public view returns (uint256){
-        return _baseToUsd(cBorrowed.borrowBalanceStored(address(this)), cBorrowed);
+        return _usdToBase(cBorrowed.borrowBalanceStored(address(this)), cBorrowed, true);
     }
 
     // Value of delegated vault deposits in USD
     function valueOfDelegated() public view returns (uint256){
         uint256 _amountInBorrowed = delegatedVault.balanceOf(address(this)).mul(delegatedVault.pricePerShare()).div(10 ** delegatedVault.decimals());
-        return _baseToUsd(_amountInBorrowed, cBorrowed);
+        return _usdToBase(_amountInBorrowed, cBorrowed, true);
     }
-
-    function _baseToUsd(uint256 _amountUnderlying, CTokenInterface cToken) internal view returns (uint256){
-        if (_amountUnderlying == max || _amountUnderlying == 0) return _amountUnderlying;
+    
+    function _usdToBase(uint256 _amount, CTokenInterface cToken, bool reverse) internal view returns (uint256){
+        if (_amount == max || _amount == 0) return _amount;
         uint256 _usdPerUnderlying = comptroller.oracle().getUnderlyingPrice(address(cToken));
-        return _amountUnderlying.mul(_usdPerUnderlying).div(1e18);
-    }
-
-    function _usdToBase(uint256 _amountInUsd, CTokenInterface cToken) internal view returns (uint256){
-        if (_amountInUsd == max || _amountInUsd == 0) return _amountInUsd;
-        uint256 _usdPerUnderlying = comptroller.oracle().getUnderlyingPrice(address(cToken));
-        return _amountInUsd.mul(1 ether).div(_usdPerUnderlying);
+        if (reverse) {
+            return _amount.mul(_usdPerUnderlying).div(1e18);
+        } else {
+            return _amount.mul(1e18).div(_usdPerUnderlying);
+        }
     }
 
     function _borrowedToShares(uint256 _amountBorrowed) internal view returns (uint256){
@@ -543,7 +541,7 @@ contract Strategy is BaseStrategy {
     }
 
     function removeCollateral(uint256 _cTokenAmount) external onlyInverseGovernance {
-        freeUpCollateral(_baseToUsd(_cToBase(_cTokenAmount, cSupplied), cSupplied), false);
+        freeUpCollateral(_usdToBase(_cToBase(_cTokenAmount, cSupplied), cSupplied, true), false);
         cSupplied.transfer(msg.sender, Math.min(_cTokenAmount, cSupplied.balanceOf(address(this))));
     }
 }
