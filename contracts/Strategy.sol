@@ -140,7 +140,7 @@ contract Strategy is BaseStrategy {
         uint256 _looseBalance = balanceOfWant();
 
         _sellDelegatedProfits();
-        _sellLendingProfits();
+//        _sellLendingProfits();
 
         uint256 _balanceAfterProfit = balanceOfWant();
         if (_balanceAfterProfit > _looseBalance) {
