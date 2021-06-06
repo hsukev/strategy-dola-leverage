@@ -155,7 +155,7 @@ contract Strategy is BaseStrategy {
         }
 
         // claim (but don't sell) INV
-        //        comptroller.claimComp(address(this), claimableMarkets);
+        comptroller.claimComp(address(this), claimableMarkets);
     }
 
     function adjustPosition(uint256 _debtOutstanding) internal override {
@@ -449,7 +449,7 @@ contract Strategy is BaseStrategy {
         uint256 _amountInBorrowed = delegatedVault.balanceOf(address(this)).mul(delegatedVault.pricePerShare()).div(10 ** delegatedVault.decimals());
         return _usdToBase(_amountInBorrowed, cBorrowed, true);
     }
-    
+
     function _usdToBase(uint256 _amount, CTokenInterface cToken, bool reverse) internal view returns (uint256){
         if (_amount == max || _amount == 0) return _amount;
         uint256 _usdPerUnderlying = comptroller.oracle().getUnderlyingPrice(address(cToken));
