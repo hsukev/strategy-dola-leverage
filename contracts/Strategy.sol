@@ -130,16 +130,6 @@ contract Strategy is BaseStrategy {
         return balanceOfWant().add(_usdToBase(valueOfCWant().add(valueOfDelegated()).sub(valueOfBorrowedOwed()), cWant));
     }
 
-    function ethToWant(uint256 _amtInWei) internal view returns (uint256 amountOut){
-        if (_amtInWei > 0) {
-            amountOut = router.getAmountsOut(_amtInWei, wethWantPath)[1];
-        }
-    }
-
-    function prepReturn(uint256 _debtOutstanding) public returns (uint256 _profit, uint256 _loss, uint256 _debtPayment){
-        return prepareReturn(_debtOutstanding);
-    }
-
     function prepareReturn(uint256 _debtOutstanding) internal override returns (uint256 _profit, uint256 _loss, uint256 _debtPayment){
         uint256 _looseBalance = balanceOfWant();
         emit Debug('_debtOutstanding', _debtOutstanding);
@@ -193,7 +183,7 @@ contract Strategy is BaseStrategy {
 
     function tendTrigger(uint256 callCostInWei) public override virtual view returns (bool) {
         uint256 _valueCollateral = valueOfTotalCollateral();
-        if (harvestTrigger(ethToWant(callCostInWei)) || _valueCollateral == 0) {
+        if (harvestTrigger(_ethToWant(callCostInWei)) || _valueCollateral == 0) {
             return false;
         }
 
@@ -322,9 +312,10 @@ contract Strategy is BaseStrategy {
     function _rebalance() public {
         cBorrowed.accrueInterest();
         (uint256 _usdAdjustment, bool _neg) = calculateAdjustmentInUsd();
-        if (_usdAdjustment == 0) {
-            // do nothing
-        } else if (!_neg) {
+        if (_neg) {
+            // undercollateralized, must unwind and repay to free up collateral
+            freeUpCollateral(_usdAdjustment);
+        } else if (_usdAdjustment > 0) {
             // overcollateralized, can borrow more
             uint256 _borrowedAdjustment = _usdToBase(_usdAdjustment, cBorrowed);
             assert(cBorrowed.borrow(_borrowedAdjustment) == NO_ERROR);
@@ -332,9 +323,6 @@ contract Strategy is BaseStrategy {
             weth.deposit{value : _borrowedActual}();
             uint256 _wethBalance = weth.balanceOf(address(this));
             delegatedVault.deposit(_wethBalance);
-        } else {
-            // undercollateralized, must unwind and repay to free up collateral
-            freeUpCollateral(_usdAdjustment, true);
         }
     }
 
@@ -438,6 +426,12 @@ contract Strategy is BaseStrategy {
         if (_amountCToken == type(uint256).max || _amountCToken == 0) return _amountCToken;
         uint256 _underlyingPerCToken = cToken.exchangeRateStored();
         return _amountCToken.mul(_underlyingPerCToken).div(1e18);
+    }
+
+    function _ethToWant(uint256 _amtInWei) internal view returns (uint256 amountOut){
+        if (_amtInWei > 0) {
+            amountOut = router.getAmountsOut(_amtInWei, wethWantPath)[1];
+        }
     }
 
 
