@@ -102,6 +102,10 @@ def cWant():
     token_address = "0x7fcb7dac61ee35b3d4a51117a7c58d53f0a8a670"  # anDOLA
     yield Contract(token_address)
 
+@pytest.fixture
+def cwant_whale(accounts):
+    yield accounts.at("0x5E075E40D01c82B6Bf0B0ecdb4Eb1D6984357EF7", force=True)  # Fed
+
 
 @pytest.fixture
 def cSupplied():
