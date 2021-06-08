@@ -133,12 +133,10 @@ contract Strategy is BaseStrategy {
 
     function prepareReturn(uint256 _debtOutstanding) internal override returns (uint256 _profit, uint256 _loss, uint256 _debtPayment){
         uint256 _looseBalance = balanceOfWant();
-        emit Debug('_debtOutstanding', _debtOutstanding);
         _sellDelegatedProfits();
         _sellLendingProfits();
 
         uint256 _balanceAfterProfit = balanceOfWant();
-        emit Debug('_balanceAfterProfit', _balanceAfterProfit);
         if (_balanceAfterProfit > _looseBalance) {
             _profit = _balanceAfterProfit.sub(_looseBalance);
         }
@@ -147,7 +145,6 @@ contract Strategy is BaseStrategy {
             uint256 _before = balanceOfWant();
             _loss = redeem(_debtOutstanding);
             uint256 _after = balanceOfWant();
-            emit Debug('prepReturn _after.sub(_before)', _after.sub(_before));
             _debtPayment = Math.min(_debtOutstanding, _after.sub(_before));
             if (_loss > 0) {
                 _profit = 0;
@@ -227,7 +224,6 @@ contract Strategy is BaseStrategy {
 
     // repay borrowed position to free up collateral.
     function freeUpCollateral(uint256 _usdCollatNeeded, bool force) public {
-        emit Debug('_usdNeeded', _usdCollatNeeded);
         bool _needMax = _usdCollatNeeded == max;
 
         cBorrowed.accrueInterest();
@@ -249,7 +245,6 @@ contract Strategy is BaseStrategy {
 
             uint256 _usdBorrowedRepaid = _usdToBase(_borrowedWithdrawn, cBorrowed, true);
             uint256 _usdCollatFreedUp = _usdBorrowedRepaid.mul(1e18).div(targetCollateralFactor);
-            emit Debug('_usdCollatFreedUp', _usdCollatFreedUp);
             if (_usdCollatNeeded > _usdCollatFreedUp) {
                 _usdMoreNeeded = _needMax ? max : _usdCollatNeeded.sub(_usdCollatFreedUp);
                 _repayWithWant(_usdMoreNeeded, force);
@@ -271,7 +266,6 @@ contract Strategy is BaseStrategy {
 
             uint256 _borrowedOwed = cBorrowed.borrowBalanceCurrent(address(this));
             uint256 _usdBorrowedOwed = _usdToBase(_borrowedOwed, cBorrowed, true);
-            emit Debug('_usdBorrowedOwed', _usdBorrowedOwed);
 
             // if payment would leave borrowed dust or payment is lower than borrowed lower bound, pay everything
             if (dustLowerBound > _usdBorrowedOwed) {
@@ -283,13 +277,10 @@ contract Strategy is BaseStrategy {
             // calculate exact want needed to repay borrowed
             if (_borrowedToRepay > 0) {
                 uint256 _wantToRepay = router.getAmountsIn(_borrowedToRepay, wantWethPath)[0];
-                emit Debug('_wantToRepay', _wantToRepay);
 
                 if (_wantToRepay > minRedeemPrecision) {
                     cWant.accrueInterest();
                     _usdToRepay = _usdToBase(_wantToRepay, cWant, true);
-                    emit Debug('usdCollatFree()', usdCollatFree());
-                    emit Debug('valueOfCWant()', valueOfCWant());
 
                     // make sure we have enough cWant freed to do the redeem
                     if (usdCollatFree() > _usdToRepay && valueOfCWant() > _usdToRepay) {
@@ -301,8 +292,6 @@ contract Strategy is BaseStrategy {
                 }
             }
         }}
-
-    event Debug(string message, uint256 amount);
 
     function usdCollatFree() public returns (uint256 _usdFree){
         uint256 _usdCollatToMaintain = valueOfBorrowedOwed().mul(1e18).div(targetCollateralFactor);
