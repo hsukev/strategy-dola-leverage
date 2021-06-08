@@ -157,10 +157,17 @@ def test_airdrop_borrowed(
     assert weth.balanceOf(strategy) == airdrop_amount
 
     print("==== Harvest ====")
+    # 1st harvest puts weth in delegated vault
     strategy.harvest({"from": strategist})
     assert weth.balanceOf(strategy) == 0
     chain.sleep(3600 * 7)  # 6 hrs for pps to recover
     chain.mine(1)
+
+    # 2nd harvest is when strat will calculate it as profit
+    strategy.harvest({"from": strategist})
+    chain.sleep(3600 * 7)  # 6 hrs for pps to recover
+    chain.mine(1)
+
     util.stateOfStrat(strategy, token)
     util.stateOfVault(vault, strategy, token)
 
