@@ -512,6 +512,7 @@ contract Strategy is BaseStrategy {
     }
 
     function setPercentRewardToSell(uint256 _percentRewardToSell) external onlyAuthorized {
+        require(_percentRewardToSell <= 100, "out of range");
         percentRewardToSell = _percentRewardToSell;
     }
 
