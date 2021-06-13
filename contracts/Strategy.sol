@@ -98,7 +98,6 @@ contract Strategy is BaseStrategy {
         want.safeApprove(address(cWant), max);
         want.safeApprove(address(router), max);
         borrowed.safeApprove(address(delegatedVault), max);
-        weth.approve(address(this), max);
         weth.approve(address(router), max);
         reward.approve(address(xInv), max);
 
