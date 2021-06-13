@@ -91,8 +91,9 @@ def vault(pm, gov, rewards, guardian, management, token):
 def strategy(strategist, keeper, vault, Strategy, gov, cWant, cBorrowed, delegatedVault, cSupplied):
     strategy = strategist.deploy(Strategy, vault, cWant, cBorrowed, delegatedVault)
     strategy.setKeeper(keeper, {"from": strategist})
-    strategy.setMaxReportDelay(86400 ,{"from": strategist}) # 1 day
-    strategy.setDebtThreshold(100000 * 1e18 ,{"from": strategist})
+    strategy.setMaxReportDelay(86400, {"from": strategist}) # 1 day
+    strategy.setDebtThreshold(100000 * 1e18, {"from": strategist})
+    strategy.setPercentRewardToSell(10, {"from": strategist})
     vault.addStrategy(strategy, 10_000, 0, 2 ** 256 - 1, 1_000, {"from": gov})
     yield strategy
 

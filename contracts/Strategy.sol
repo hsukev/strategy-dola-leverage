@@ -46,6 +46,7 @@ contract Strategy is BaseStrategy {
     IWETH9 internal weth = IWETH9(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
 
     address[] public path;
+    address[] public rewardWantPath;
     address[] public wethWantPath;
     address[] public wantWethPath;
     address[] public claimableMarkets;
@@ -55,6 +56,7 @@ contract Strategy is BaseStrategy {
     uint256 public targetCollateralFactor;
     uint256 public collateralTolerance;
     uint256 public borrowLimit; // borrow nothing until set
+    uint256 public percentRewardToSell; // sell nothing until set
     uint256 internal dustLowerBound = 0.01 ether; // threshold for paying off borrowed dust
     uint256 constant public max = type(uint256).max;
 
@@ -85,6 +87,7 @@ contract Strategy is BaseStrategy {
         require(address(cSupplied) != address(xInv));
 
         path = [delegatedVault.token(), address(want)];
+        rewardWantPath = [address(reward), address(weth), address(want)];
         wethWantPath = [address(weth), address(want)];
         wantWethPath = [address(want), address(weth)];
 
@@ -99,6 +102,7 @@ contract Strategy is BaseStrategy {
         want.safeApprove(address(router), max);
         borrowed.safeApprove(address(delegatedVault), max);
         weth.approve(address(router), max);
+        reward.approve(address(router), max);
         reward.approve(address(xInv), max);
 
         minRedeemPrecision = 10 ** (vault.decimals() - cWant.decimals());
@@ -135,6 +139,14 @@ contract Strategy is BaseStrategy {
         _sellDelegatedProfits();
         _sellLendingProfits();
 
+        comptroller.claimComp(address(this), claimableMarkets);
+        if (percentRewardToSell > 0) {
+            uint256 _rewardsToSell = balanceOfReward().mul(percentRewardToSell).div(100);
+            if (_rewardsToSell > 1e9) {
+                router.swapExactTokensForTokens(_rewardsToSell, 0, rewardWantPath, address(this), now);
+            }
+        }
+
         uint256 _balanceAfterProfit = balanceOfWant();
         if (_balanceAfterProfit > _looseBalance) {
             _profit = _balanceAfterProfit.sub(_looseBalance);
@@ -142,16 +154,13 @@ contract Strategy is BaseStrategy {
 
         if (_debtOutstanding > 0) {
             uint256 _before = balanceOfWant();
-            _loss = redeem(_debtOutstanding);
+            _loss = _redeem(_debtOutstanding);
             uint256 _after = balanceOfWant();
             _debtPayment = Math.min(_debtOutstanding, _after.sub(_before));
             if (_loss > 0) {
                 _profit = 0;
             }
         }
-
-        // claim (but don't sell) INV
-        comptroller.claimComp(address(this), claimableMarkets);
     }
 
     function adjustPosition(uint256 _debtOutstanding) internal override {
@@ -171,7 +180,7 @@ contract Strategy is BaseStrategy {
             if (_amountNeeded == max) {
                 _looseBalance = 0;
             }
-            _loss = redeem(_amountNeeded.sub(_looseBalance));
+            _loss = _redeem(_amountNeeded.sub(_looseBalance));
             _liquidatedAmount = Math.min(_amountNeeded, balanceOfWant());
         } else {
             _liquidatedAmount = _amountNeeded;
@@ -222,7 +231,7 @@ contract Strategy is BaseStrategy {
     //
 
     // repay borrowed position to free up collateral.
-    function freeUpCollateral(uint256 _usdCollatNeeded, bool force) public {
+    function _freeUpCollateral(uint256 _usdCollatNeeded, bool force) public { //TODO internal
         bool _needMax = _usdCollatNeeded == max;
 
         cBorrowed.accrueInterest();
@@ -300,8 +309,8 @@ contract Strategy is BaseStrategy {
         }
     }
 
-    function redeem(uint256 _wantNeeded) public returns (uint256 _wantShort){
-        freeUpCollateral(_usdToBase(_wantNeeded, cWant, true), false);
+    function _redeem(uint256 _wantNeeded) public returns (uint256 _wantShort){ //TODO internal
+        _freeUpCollateral(_usdToBase(_wantNeeded, cWant, true), false);
 
         uint256 _wantAllowed = _usdToBase(usdCollatFree(), cWant, false);
         uint256 _wantCash = cWant.getCash();
@@ -321,7 +330,7 @@ contract Strategy is BaseStrategy {
 
 
     // Calculate adjustments on borrowing market to maintain healthy targetCollateralFactor and borrowLimit
-    function calculateUsdBorrowAdjustment() internal returns (uint256 _usdAdjustment, bool _neg){
+    function _calculateUsdBorrowAdjustment() internal returns (uint256 _usdAdjustment, bool _neg){
         uint256 _usdTotalCollat = valueOfTotalCollateral();
         _usdTotalCollat = _usdTotalCollat > dustLowerBound ? _usdTotalCollat : 0;
         uint256 _usdBorrowTarget = _usdTotalCollat.mul(targetCollateralFactor).div(1e18);
@@ -342,13 +351,13 @@ contract Strategy is BaseStrategy {
     }
 
 
-    function _rebalance() public {
+    function _rebalance() public { //TODO internal
         cBorrowed.accrueInterest();
-        (uint256 _usdBorrowAdjustment, bool _neg) = calculateUsdBorrowAdjustment();
+        (uint256 _usdBorrowAdjustment, bool _neg) = _calculateUsdBorrowAdjustment();
         if (_neg) {
             // undercollateralized, must unwind and repay to free up collateral
             uint256 _usdCollatToFree = _usdBorrowAdjustment.mul(1e18).div(targetCollateralFactor);
-            freeUpCollateral(_usdCollatToFree, true);
+            _freeUpCollateral(_usdCollatToFree, true);
         } else if (_usdBorrowAdjustment > 0) {
             // overcollateralized, can borrow more
             uint256 _borrowedAdjustment = _usdToBase(_usdBorrowAdjustment, cBorrowed, false);
@@ -361,7 +370,7 @@ contract Strategy is BaseStrategy {
     }
 
     // sell profits earned from delegated vault
-    function _sellDelegatedProfits() public {
+    function _sellDelegatedProfits() public { //TODO internal
         cBorrowed.accrueInterest();
         uint256 _valueOfBorrowed = valueOfBorrowedOwed();
         uint256 _valueOfDelegated = valueOfDelegated();
@@ -381,13 +390,13 @@ contract Strategy is BaseStrategy {
         }
     }
 
-    function _sellLendingProfits() internal {
+    function _sellLendingProfits() public { //TODO internal
         cWant.accrueInterest();
         uint256 _debt = vault.strategies(address(this)).totalDebt;
         uint256 _totalAssets = balanceOfBase(cWant);
 
         if (_totalAssets > _debt) {
-            redeem(_totalAssets.sub(_debt));
+            _redeem(_totalAssets.sub(_debt));
         }
     }
 
@@ -466,7 +475,6 @@ contract Strategy is BaseStrategy {
         }
     }
 
-
     // used after a migration to redeem escrowed INV tokens that can then be swept by gov
     function withdrawEscrowedRewards() external onlyAuthorized {
         TimelockEscrowInterface _timelockEscrow = TimelockEscrowInterface(xInv.escrow());
@@ -503,6 +511,10 @@ contract Strategy is BaseStrategy {
         borrowLimit = _borrowLimit;
     }
 
+    function setPercentRewardToSell(uint256 _percentRewardToSell) external onlyAuthorized {
+        percentRewardToSell = _percentRewardToSell;
+    }
+
     //
     // For Inverse Finance
     //
@@ -529,7 +541,7 @@ contract Strategy is BaseStrategy {
     }
 
     function removeCollateral(uint256 _cTokenAmount) external onlyInverseGovernance {
-        freeUpCollateral(_usdToBase(_cToBase(_cTokenAmount, cSupplied), cSupplied, true), false);
+        _freeUpCollateral(_usdToBase(_cToBase(_cTokenAmount, cSupplied), cSupplied, true), false);
         cSupplied.transfer(msg.sender, Math.min(_cTokenAmount, cSupplied.balanceOf(address(this))));
     }
 }
