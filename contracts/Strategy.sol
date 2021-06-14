@@ -2,9 +2,8 @@
 pragma solidity 0.6.12;
 pragma experimental ABIEncoderV2;
 
-import {BaseStrategy, StrategyParams, VaultAPI} from "@yearnvaults/contracts/BaseStrategy.sol";
+import {BaseStrategy, VaultAPI} from "@yearnvaults/contracts/BaseStrategy.sol";
 import {SafeERC20, SafeMath, IERC20, Address} from "@openzeppelin/contracts/token/ERC20/SafeERC20.sol";
-import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {Math} from "@openzeppelin/contracts/math/Math.sol";
 
 
@@ -12,29 +11,24 @@ import "../interfaces/inverse.sol";
 import "../interfaces/uniswap.sol";
 import "../interfaces/weth.sol";
 
-interface IERC20Metadata is IERC20 {
-    function name() external view returns (string memory);
-
-    function symbol() external view returns (string memory);
-
-    function decimals() external view returns (uint8);
-}
-
 contract Strategy is BaseStrategy {
     using SafeERC20 for IERC20;
     using Address for address;
     using SafeMath for uint256;
 
     modifier onlyInverseGovernance() {
-        require(msg.sender == inverseGovernance, "!inverseGovernance");
+        require(msg.sender == inverseGovernance);
         _;
     }
 
     uint private constant NO_ERROR = 0;
 
     IUniswapV2Router02 public router;
+    // Review no setter for this? What would have been the process of moving
+    // funds from yvETH 0.3.3 to yvETH 0.4.2?
     VaultAPI public delegatedVault;
-    ComptrollerInterface public comptroller;
+    // Review: setting vars as private reduce contract size.
+    ComptrollerInterface private comptroller;
 
     CErc20Interface public cWant;
     CEther public cBorrowed;
@@ -45,11 +39,11 @@ contract Strategy is BaseStrategy {
     IERC20 public reward; // INV
     IWETH9 internal weth = IWETH9(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
 
-    address[] public path;
-    address[] public rewardWantPath;
-    address[] public wethWantPath;
-    address[] public wantWethPath;
-    address[] public claimableMarkets;
+    address[] private path;
+    address[] private rewardWantPath;
+    address[] private wethWantPath;
+    address[] private wantWethPath;
+    address[] private claimableMarkets;
 
     uint public minRedeemPrecision;
     address public inverseGovernance;
@@ -57,7 +51,7 @@ contract Strategy is BaseStrategy {
     uint256 public collateralTolerance;
     uint256 public borrowLimit; // borrow nothing until set
     uint256 public percentRewardToSell; // sell nothing until set
-    uint256 internal dustLowerBound = 0.01 ether; // threshold for paying off borrowed dust
+    uint256 internal constant dustLowerBound = 0.01 ether; // threshold for paying off borrowed dust
     uint256 constant public max = type(uint256).max;
 
     constructor(address _vault, address _cWant, address _cBorrowed, address _delegatedVault) public BaseStrategy(_vault) {
@@ -116,7 +110,7 @@ contract Strategy is BaseStrategy {
     //
 
     function name() external view override returns (string memory) {
-        return string(abi.encodePacked("StrategyInverse", IERC20Metadata(address(want)).symbol(), "Leverage"));
+        return "convert_to_variable";
     }
 
     // User portion of the delegated assets in want
@@ -170,10 +164,6 @@ contract Strategy is BaseStrategy {
         _rebalance();
     }
 
-    function liquidate(uint256 _amountNeeded) public returns (uint256 _liquidatedAmount, uint256 _loss){
-        return liquidatePosition(_amountNeeded);
-    }
-
     function liquidatePosition(uint256 _amountNeeded) internal override returns (uint256 _liquidatedAmount, uint256 _loss){
         uint256 _looseBalance = balanceOfWant();
         if (_amountNeeded > _looseBalance) {
@@ -198,6 +188,11 @@ contract Strategy is BaseStrategy {
     }
 
     function prepareMigration(address _newStrategy) internal override {
+        // Review, since we have a liquidation, we are not going to migrate this
+        // strategy. We would revoke, send all funds back to the vault and
+        // deposit to a new strat. You can leave this method empty.
+        // Example: https://github.com/jmonteer/yearnV2-aave-lender-borrower/blob/master/contracts/Strategy.sol#L473
+
         // borrowed position can't be transferred so need to unwind everything before migrating
         liquidatePosition(max);
 
@@ -213,14 +208,8 @@ contract Strategy is BaseStrategy {
         xInv.redeem(xInv.balanceOf(address(this)));
     }
 
-    function protectedTokens() internal view override returns (address[] memory){
-        address[] memory protected = new address[](5);
-        protected[0] = address(borrowed);
-        protected[1] = address(delegatedVault);
-        protected[2] = address(cWant);
-        protected[3] = address(xInv);
-        protected[4] = address(cSupplied);
-        return protected;
+    function protectedTokens() internal view override returns (address[] memory) {
+        // Review: Clone >> protected tokens. Leave this empty.
     }
 
     receive() external payable {}
@@ -488,13 +477,16 @@ contract Strategy is BaseStrategy {
 
     function setTargetCollateralFactor(uint256 _targetMantissa) external onlyAuthorized {
         (, uint256 _safeCollateralFactor,) = comptroller.markets(address(cWant));
-        require(_targetMantissa.add(collateralTolerance) < _safeCollateralFactor, "too high");
-        require(_targetMantissa > collateralTolerance, "too low");
+        require(_targetMantissa.add(collateralTolerance) < _safeCollateralFactor);
+        require(_targetMantissa > collateralTolerance);
 
         targetCollateralFactor = _targetMantissa;
     }
 
     function setRouter(address _address) external onlyGovernance {
+        // REVIEW: what about reward, weth, borrowed?
+        // Please add a test changing the router after a harvest to make
+        // sure this works.
         want.safeApprove(address(router), max);
         router = IUniswapV2Router02(_address);
     }
@@ -512,7 +504,7 @@ contract Strategy is BaseStrategy {
     }
 
     function setPercentRewardToSell(uint256 _percentRewardToSell) external onlyAuthorized {
-        require(_percentRewardToSell <= 100, "out of range");
+        require(_percentRewardToSell <= 100);
         percentRewardToSell = _percentRewardToSell;
     }
 
@@ -525,8 +517,9 @@ contract Strategy is BaseStrategy {
     }
 
     function setCSupplied(address _address) external onlyInverseGovernance {
-        require(_address != address(cWant), "same as want");
+        require(_address != address(cWant));
 
+        // REVIEW not needed?
         // comptroller.exitMarket(address(cSupplied));
         cSupplied = CErc20Interface(address(_address));
 
@@ -535,7 +528,7 @@ contract Strategy is BaseStrategy {
     }
 
     // @param _amount in cToken from the private marketa
-    function supplyCollateral(uint256 _amount) external onlyInverseGovernance returns (bool){
+    function supplyCollateral(uint256 _amount) external onlyInverseGovernance returns (bool) {
         cSupplied.approve(inverseGovernance, max);
         cSupplied.approve(address(this), max);
         return cSupplied.transferFrom(inverseGovernance, address(this), _amount);
