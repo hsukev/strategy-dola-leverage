@@ -27,7 +27,8 @@ contract Strategy is BaseStrategy {
     // Review no setter for this? What would have been the process of moving
     // funds from yvETH 0.3.3 to yvETH 0.4.2?
     VaultAPI public delegatedVault;
-    // Review: setting vars as private reduce contract size.
+
+    // TODO: Comptroller also needs a setter
     ComptrollerInterface private comptroller;
 
     CErc20Interface public cWant;
@@ -179,7 +180,7 @@ contract Strategy is BaseStrategy {
 
     function tendTrigger(uint256 callCostInWei) public override virtual view returns (bool) {
         uint256 _valueCollateral = valueOfTotalCollateral();
-        if (harvestTrigger(_ethToWant(callCostInWei)) || _valueCollateral == 0) {
+        if (harvestTrigger(callCostInWei) || _valueCollateral == 0) {
             return false;
         }
 
@@ -188,28 +189,22 @@ contract Strategy is BaseStrategy {
     }
 
     function prepareMigration(address _newStrategy) internal override {
-        // Review, since we have a liquidation, we are not going to migrate this
-        // strategy. We would revoke, send all funds back to the vault and
-        // deposit to a new strat. You can leave this method empty.
-        // Example: https://github.com/jmonteer/yearnV2-aave-lender-borrower/blob/master/contracts/Strategy.sol#L473
-
-        // borrowed position can't be transferred so need to unwind everything before migrating
-        liquidatePosition(max);
-
-        reward.transfer(_newStrategy, balanceOfReward());
-        borrowed.transfer(_newStrategy, borrowed.balanceOf(address(this)));
-        delegatedVault.transfer(_newStrategy, delegatedVault.balanceOf(address(this)));
-
-        cWant.transfer(_newStrategy, cWant.balanceOf(address(this)));
-        cSupplied.transfer(_newStrategy, cSupplied.balanceOf(address(this)));
-
-        // can't transfer xINV. must redeem for INV and wait 14 days before withdrawing it from escrow.
-        // gov to use withdrawEscrowedRewards() then sweep() after escrow period.
-        xInv.redeem(xInv.balanceOf(address(this)));
+        // do nothing. Borrowed position can't be transferred so need to unwind everything before migrating
     }
 
     function protectedTokens() internal view override returns (address[] memory) {
         // Review: Clone >> protected tokens. Leave this empty.
+    }
+
+    function ethToWant(uint256 _amtInWei) public view override returns (uint256){
+        if (_amtInWei > 0) {
+            return router.getAmountsOut(_amtInWei, wethWantPath)[1];
+        }
+    }
+
+    function liquidateAllPositions() internal override returns (uint256 _amountFreed){
+        liquidatePosition(max);
+        xInv.redeem(xInv.balanceOf(address(this)));
     }
 
     receive() external payable {}
@@ -220,7 +215,7 @@ contract Strategy is BaseStrategy {
     //
 
     // repay borrowed position to free up collateral.
-    function _freeUpCollateral(uint256 _usdCollatNeeded, bool force) public { //TODO internal
+    function _freeUpCollateral(uint256 _usdCollatNeeded, bool force) public {//TODO internal
         bool _needMax = _usdCollatNeeded == max;
 
         cBorrowed.accrueInterest();
@@ -298,7 +293,7 @@ contract Strategy is BaseStrategy {
         }
     }
 
-    function _redeem(uint256 _wantNeeded) public returns (uint256 _wantShort){ //TODO internal
+    function _redeem(uint256 _wantNeeded) public returns (uint256 _wantShort){//TODO internal
         _freeUpCollateral(_usdToBase(_wantNeeded, cWant, true), false);
 
         uint256 _wantAllowed = _usdToBase(usdCollatFree(), cWant, false);
@@ -340,7 +335,7 @@ contract Strategy is BaseStrategy {
     }
 
 
-    function _rebalance() public { //TODO internal
+    function _rebalance() public {//TODO internal
         cBorrowed.accrueInterest();
         (uint256 _usdBorrowAdjustment, bool _neg) = _calculateUsdBorrowAdjustment();
         if (_neg) {
@@ -359,7 +354,7 @@ contract Strategy is BaseStrategy {
     }
 
     // sell profits earned from delegated vault
-    function _sellDelegatedProfits() public { //TODO internal
+    function _sellDelegatedProfits() public {//TODO internal
         cBorrowed.accrueInterest();
         uint256 _valueOfBorrowed = valueOfBorrowedOwed();
         uint256 _valueOfDelegated = valueOfDelegated();
@@ -379,7 +374,7 @@ contract Strategy is BaseStrategy {
         }
     }
 
-    function _sellLendingProfits() public { //TODO internal
+    function _sellLendingProfits() public {//TODO internal
         cWant.accrueInterest();
         uint256 _debt = vault.strategies(address(this)).totalDebt;
         uint256 _totalAssets = balanceOfBase(cWant);
@@ -456,12 +451,6 @@ contract Strategy is BaseStrategy {
         if (_amountCToken == max || _amountCToken == 0) return _amountCToken;
         uint256 _underlyingPerCToken = cToken.exchangeRateStored();
         return _amountCToken.mul(_underlyingPerCToken).div(1e18);
-    }
-
-    function _ethToWant(uint256 _amtInWei) internal view returns (uint256 amountOut){
-        if (_amtInWei > 0) {
-            amountOut = router.getAmountsOut(_amtInWei, wethWantPath)[1];
-        }
     }
 
     // used after a migration to redeem escrowed INV tokens that can then be swept by gov
