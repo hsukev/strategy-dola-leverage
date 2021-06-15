@@ -24,11 +24,9 @@ contract Strategy is BaseStrategy {
     uint private constant NO_ERROR = 0;
 
     IUniswapV2Router02 public router;
-    // Review no setter for this? What would have been the process of moving
-    // funds from yvETH 0.3.3 to yvETH 0.4.2?
     VaultAPI public delegatedVault;
 
-    // TODO: Comptroller also needs a setter
+    // TODO: Comptroller also needs a setter if we can afford space
     ComptrollerInterface private comptroller;
 
     CErc20Interface public cWant;
@@ -47,6 +45,7 @@ contract Strategy is BaseStrategy {
     address[] private claimableMarkets;
 
     uint public minRedeemPrecision;
+    string private strategyName;
     address public inverseGovernance;
     uint256 public targetCollateralFactor;
     uint256 public collateralTolerance;
@@ -55,7 +54,8 @@ contract Strategy is BaseStrategy {
     uint256 internal constant dustLowerBound = 0.01 ether; // threshold for paying off borrowed dust
     uint256 constant public max = type(uint256).max;
 
-    constructor(address _vault, address _cWant, address _cBorrowed, address _delegatedVault) public BaseStrategy(_vault) {
+    constructor(address _vault, address _cWant, address _cBorrowed, address _delegatedVault, string memory _name) public BaseStrategy(_vault) {
+        strategyName = _name;
         // TODO temporarily GovernorAlpha
         inverseGovernance = 0x35d9f4953748b318f18c30634bA299b237eeDfff;
 
@@ -111,7 +111,7 @@ contract Strategy is BaseStrategy {
     //
 
     function name() external view override returns (string memory) {
-        return "convert_to_variable";
+        return strategyName;
     }
 
     // User portion of the delegated assets in want

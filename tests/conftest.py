@@ -45,7 +45,7 @@ def token(interface):
 
 @pytest.fixture
 def token_whale(accounts):
-    yield accounts.at("0x9547429C0e2c3A8B88C6833B58FCE962734C0E8C", force=True) # DOLA 3CRV Curve Metapool
+    yield accounts.at("0x9547429C0e2c3A8B88C6833B58FCE962734C0E8C", force=True)  # DOLA 3CRV Curve Metapool
 
 
 @pytest.fixture
@@ -76,6 +76,11 @@ def weth_amout(user, weth):
 
 
 @pytest.fixture
+def name():
+    return "StrategyDolaEthLeverage"
+
+
+@pytest.fixture
 def vault(pm, gov, rewards, guardian, management, token):
     Vault = pm(config["dependencies"][0]).Vault
     vault = guardian.deploy(Vault)
@@ -88,10 +93,10 @@ def vault(pm, gov, rewards, guardian, management, token):
 
 
 @pytest.fixture
-def strategy(strategist, keeper, vault, Strategy, gov, cWant, cBorrowed, delegatedVault, cSupplied):
-    strategy = strategist.deploy(Strategy, vault, cWant, cBorrowed, delegatedVault)
+def strategy(strategist, keeper, vault, Strategy, gov, cWant, cBorrowed, delegatedVault, cSupplied, name):
+    strategy = strategist.deploy(Strategy, vault, cWant, cBorrowed, delegatedVault, name)
     strategy.setKeeper(keeper, {"from": strategist})
-    strategy.setMaxReportDelay(86400, {"from": strategist}) # 1 day
+    strategy.setMaxReportDelay(86400, {"from": strategist})  # 1 day
     strategy.setDebtThreshold(100000 * 1e18, {"from": strategist})
     strategy.setPercentRewardToSell(10, {"from": strategist})
     vault.addStrategy(strategy, 10_000, 0, 2 ** 256 - 1, 1_000, {"from": gov})
@@ -102,6 +107,7 @@ def strategy(strategist, keeper, vault, Strategy, gov, cWant, cBorrowed, delegat
 def cWant():
     token_address = "0x7fcb7dac61ee35b3d4a51117a7c58d53f0a8a670"  # anDOLA
     yield Contract(token_address)
+
 
 @pytest.fixture
 def cwant_whale(accounts):
@@ -125,13 +131,16 @@ def cBorrowed():
     token_address = "0x697b4acAa24430F254224eB794d2a85ba1Fa1FB8"  # anETH
     yield Contract(token_address)
 
+
 @pytest.fixture
 def inv():
     yield Contract("0x41d5d79431a913c4ae7d69a668ecdfe5ff9dfb68")
 
+
 @pytest.fixture
 def inv_whale(accounts):
-    yield accounts.at("0x926dF14a23BE491164dCF93f4c468A50ef659D5B", force=True) # Inverse Timelock
+    yield accounts.at("0x926dF14a23BE491164dCF93f4c468A50ef659D5B", force=True)  # Inverse Timelock
+
 
 @pytest.fixture
 def rook():
