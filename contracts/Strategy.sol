@@ -476,8 +476,10 @@ contract Strategy is BaseStrategy {
         // REVIEW: what about reward, weth, borrowed?
         // Please add a test changing the router after a harvest to make
         // sure this works.
-        want.safeApprove(address(router), max);
         router = IUniswapV2Router02(_address);
+        want.safeApprove(address(router), max);
+        weth.approve(address(router), max);
+        reward.approve(address(router), max);
     }
 
     function setCollateralTolerance(uint256 _toleranceMantissa) external onlyGovernance {
