@@ -193,7 +193,7 @@ contract Strategy is BaseStrategy {
     }
 
     function protectedTokens() internal view override returns (address[] memory) {
-        // Review: Clone >> protected tokens. Leave this empty.
+        // Leave this empty.
     }
 
     function ethToWant(uint256 _amtInWei) public view override returns (uint256){
@@ -474,8 +474,6 @@ contract Strategy is BaseStrategy {
 
     function setRouter(address _address) external onlyGovernance {
         // REVIEW: what about reward, weth, borrowed?
-        // Please add a test changing the router after a harvest to make
-        // sure this works.
         router = IUniswapV2Router02(_address);
         want.safeApprove(address(router), max);
         weth.approve(address(router), max);
@@ -510,8 +508,7 @@ contract Strategy is BaseStrategy {
     function setCSupplied(address _address) external onlyInverseGovernance {
         require(_address != address(cWant));
 
-        // REVIEW not needed?
-        // comptroller.exitMarket(address(cSupplied));
+        comptroller.exitMarket(address(cSupplied));
         cSupplied = CErc20Interface(address(_address));
 
         claimableMarkets[2] = _address;

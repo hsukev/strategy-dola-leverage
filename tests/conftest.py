@@ -116,13 +116,13 @@ def cwant_whale(accounts):
 
 @pytest.fixture
 def cSupplied():
-    token_address = "0xD60B06B457bFf7fc38AC5E7eCE2b5ad16B288326"  # temporarily anXSUSHI
+    token_address = "0xde2af899040536884e062D3a334F2dD36F34b4a4"  # temporarily anYFI
     yield Contract(token_address)
 
 
 @pytest.fixture
 def cSupplied_whale(accounts):
-    token_address = "0x7BFEe91193d9Df2Ac0bFe90191D40F23c773C060"  # temporarily anXSUSHI
+    token_address = "0xB1AdceddB2941033a090dD166a462fe1c2029484"  # temporarily anYFI
     yield accounts.at(token_address, force=True)
 
 
@@ -169,7 +169,7 @@ def inverseGov(cSupplied_whale, cSupplied, cSupply_amount):
 
 @pytest.fixture
 def cSupply_amount(cSupplied):
-    yield 1000000 * 10 ** cSupplied.decimals()
+    yield 10 * 10 ** cSupplied.decimals()
 
 
 @pytest.fixture(scope="session")
