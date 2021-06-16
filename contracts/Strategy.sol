@@ -178,6 +178,10 @@ contract Strategy is BaseStrategy {
         }
     }
 
+    function liquidateAllPositions() internal override returns (uint256 _amountFreed){
+        (_amountFreed,) = liquidatePosition(max);
+    }
+
     function tendTrigger(uint256 callCostInWei) public override virtual view returns (bool) {
         uint256 _valueCollateral = valueOfTotalCollateral();
         if (harvestTrigger(callCostInWei) || _valueCollateral == 0) {
@@ -200,11 +204,6 @@ contract Strategy is BaseStrategy {
         if (_amtInWei > 0) {
             return router.getAmountsOut(_amtInWei, wethWantPath)[1];
         }
-    }
-
-    function liquidateAllPositions() internal override returns (uint256 _amountFreed){
-        liquidatePosition(max);
-        xInv.redeem(xInv.balanceOf(address(this)));
     }
 
     receive() external payable {}
@@ -301,13 +300,12 @@ contract Strategy is BaseStrategy {
         uint256 _wantHeld = balanceOfBase(cWant);
 
         uint256 _wantRedeemable = Math.min(Math.min(Math.min(_wantNeeded, _wantCash), _wantHeld), _wantAllowed);
-
         if (_wantRedeemable > minRedeemPrecision) {
             cWant.redeemUnderlying(_wantRedeemable) == NO_ERROR;
         }
 
         uint256 _wantAfter = balanceOfWant();
-        if (_wantNeeded > _wantAfter) {
+        if (_wantNeeded > _wantAfter && _wantNeeded != max) {
             _wantShort = _wantNeeded.sub(_wantAfter);
         }
     }
@@ -453,6 +451,9 @@ contract Strategy is BaseStrategy {
         return _amountCToken.mul(_underlyingPerCToken).div(1e18);
     }
 
+    function redeemRewards(uint256 _amount) external onlyAuthorized {
+        xInv.redeem(_amount);
+    }
     // used after a migration to redeem escrowed INV tokens that can then be swept by gov
     function withdrawEscrowedRewards() external onlyAuthorized {
         TimelockEscrowInterface _timelockEscrow = TimelockEscrowInterface(xInv.escrow());

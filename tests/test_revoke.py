@@ -9,11 +9,20 @@ def test_revoke_strategy_from_vault(
     vault.deposit(amount, {"from": user})
     strategy.harvest()
     assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
+    print(f"\n before harvest")
+    util.stateOfStrat(strategy, token)
+
+    util.stateOfVault(vault, strategy, token)
 
     # In order to pass this tests, you will need to implement prepareReturn.
     # TODO: uncomment the following lines.
     vault.revokeStrategy(strategy.address, {"from": gov})
     strategy.harvest()
+    print(f"\n after harvest")
+    util.stateOfStrat(strategy, token)
+
+    util.stateOfVault(vault, strategy, token)
+
     assert pytest.approx(token.balanceOf(vault.address), rel=RELATIVE_APPROX) == amount
 
 
@@ -25,9 +34,18 @@ def test_revoke_strategy_from_strategy(
     vault.deposit(amount, {"from": user})
     strategy.harvest()
     assert pytest.approx(strategy.estimatedTotalAssets(), rel=RELATIVE_APPROX) == amount
+    print(f"\n before harvest")
+    util.stateOfStrat(strategy, token)
+
+    util.stateOfVault(vault, strategy, token)
 
     strategy.setEmergencyExit()
     strategy.harvest()
+    print(f"\n after harvest")
+    util.stateOfStrat(strategy, token)
+
+    util.stateOfVault(vault, strategy, token)
+
     assert pytest.approx(token.balanceOf(vault.address), rel=RELATIVE_APPROX) == amount
 
 def test_emergency_exit(
@@ -58,3 +76,4 @@ def test_emergency_exit(
     assert strategy.estimatedTotalAssets() < 1e16
 
     util.stateOfVault(vault, strategy, token)
+
