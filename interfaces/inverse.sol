@@ -103,6 +103,7 @@ interface CTokenStorage {
 }
 
 interface CTokenInterface {
+    function comptroller() external view returns (address);
 
     /*** Market Events ***/
 

@@ -61,7 +61,6 @@ contract Strategy is BaseStrategy {
 
         delegatedVault = VaultAPI(_delegatedVault);
         router = IUniswapV2Router02(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
-        comptroller = ComptrollerInterface(0x4dCf7407AE5C07f8681e1659f626E114A7667339);
 
         cWant = CErc20Interface(_cWant);
         cBorrowed = CEther(_cBorrowed);
@@ -87,6 +86,7 @@ contract Strategy is BaseStrategy {
         wantWethPath = [address(want), address(weth)];
 
         claimableMarkets = [address(cWant), address(cBorrowed), address(cSupplied)];
+        comptroller = ComptrollerInterface(cWant.comptroller());
         comptroller.enterMarkets(claimableMarkets);
         // 50%
         targetCollateralFactor = 0.5 ether;
