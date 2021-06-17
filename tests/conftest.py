@@ -47,6 +47,9 @@ def token(interface):
 def token_whale(accounts):
     yield accounts.at("0x9547429C0e2c3A8B88C6833B58FCE962734C0E8C", force=True)  # DOLA 3CRV Curve Metapool
 
+@pytest.fixture(autouse=True)
+def isolation(fn_isolation):
+    pass
 
 @pytest.fixture
 def amount(accounts, token, user, token_whale):
