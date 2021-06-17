@@ -342,7 +342,7 @@ contract Strategy is BaseStrategy {
             _freeUpCollateral(_usdCollatToFree, true);
         } else if (_usdBorrowAdjustment > 0) {
             // overcollateralized, can borrow more
-            uint256 _borrowedAdjustment = _usdToBase(_usdBorrowAdjustment, cBorrowed, false);
+            uint256 _borrowedAdjustment = Math.min(_usdToBase(_usdBorrowAdjustment, cBorrowed, false), cBorrowed.getCash());
             assert(cBorrowed.borrow(_borrowedAdjustment) == NO_ERROR);
             uint256 _borrowedActual = address(this).balance;
             weth.deposit{value : _borrowedActual}();
