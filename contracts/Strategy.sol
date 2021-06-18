@@ -54,22 +54,36 @@ contract Strategy is BaseStrategy {
     uint256 internal constant dustLowerBound = 0.01 ether; // threshold for paying off borrowed dust
     uint256 constant public max = type(uint256).max;
 
-    constructor(address _vault, address _cWant, address _cBorrowed, address _delegatedVault, string memory _name) public BaseStrategy(_vault) {
+    event Cloned(address indexed clone);
+
+    constructor(address _vault) public BaseStrategy(_vault) {
+        _initialize(_vault, msg.sender, msg.sender, msg.sender);
+    }
+
+    function initialize(
+        address _vault,
+        address _cWant,
+        address _cBorrowed,
+        address _delegatedVault,
+        string memory _name
+    ) external virtual {
+        _initialize(_vault, msg.sender, msg.sender, msg.sender);
         strategyName = _name;
+
         // TODO temporarily GovernorAlpha
         inverseGovernance = 0x35d9f4953748b318f18c30634bA299b237eeDfff;
+        router = IUniswapV2Router02(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
 
         delegatedVault = VaultAPI(_delegatedVault);
-        router = IUniswapV2Router02(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
+        borrowed = IERC20(delegatedVault.token());
+        reward = IERC20(0x41D5D79431A913C4aE7d69a668ecdfE5fF9DFB68);
 
         cWant = CErc20Interface(_cWant);
         cBorrowed = CEther(_cBorrowed);
         xInv = xInvCoreInterface(0x65b35d6Eb7006e0e607BC54EB2dFD459923476fE);
+
         // TODO temporarily Sushibar
         cSupplied = CErc20Interface(0xD60B06B457bFf7fc38AC5E7eCE2b5ad16B288326);
-
-        borrowed = IERC20(delegatedVault.token());
-        reward = IERC20(0x41D5D79431A913C4aE7d69a668ecdfE5fF9DFB68);
 
         require(cWant.underlying() != address(borrowed));
         require(cWant.underlying() == address(want));
@@ -88,10 +102,6 @@ contract Strategy is BaseStrategy {
         claimableMarkets = [address(cWant), address(cBorrowed), address(cSupplied)];
         comptroller = ComptrollerInterface(cWant.comptroller());
         comptroller.enterMarkets(claimableMarkets);
-        // 50%
-        targetCollateralFactor = 0.5 ether;
-        // 1%
-        collateralTolerance = 0.01 ether;
 
         want.safeApprove(address(cWant), max);
         want.safeApprove(address(router), max);
@@ -102,8 +112,37 @@ contract Strategy is BaseStrategy {
 
         minRedeemPrecision = 10 ** (vault.decimals() - cWant.decimals());
 
+        // 50%
+        targetCollateralFactor = 0.5 ether;
+        // 1%
+        collateralTolerance = 0.01 ether;
+
         // delegate voting power to yearn gov
         xInv.delegate(governance());
+    }
+
+    function clone(
+        address _vault,
+        address _cWant,
+        address _cBorrowed,
+        address _delegatedVault,
+        string memory _name
+    ) external returns (address payable newStrategy) {
+        // Copied from https://github.com/optionality/clone-factory/blob/master/contracts/CloneFactory.sol
+        bytes20 addressBytes = bytes20(address(this));
+
+        assembly {
+            // EIP-1167 bytecode
+            let clone_code := mload(0x40)
+            mstore(clone_code, 0x3d602d80600a3d3981f3363d3d373d3d3d363d73000000000000000000000000)
+            mstore(add(clone_code, 0x14), addressBytes)
+            mstore(add(clone_code, 0x28), 0x5af43d82803e903d91602b57fd5bf30000000000000000000000000000000000)
+            newStrategy := create(0, clone_code, 0x37)
+        }
+
+        Strategy(newStrategy).initialize(_vault, _cWant, _cBorrowed, _delegatedVault, _name);
+
+        emit Cloned(newStrategy);
     }
 
     //
@@ -214,7 +253,7 @@ contract Strategy is BaseStrategy {
     //
 
     // repay borrowed position to free up collateral.
-    function _freeUpCollateral(uint256 _usdCollatNeeded, bool force) public {//TODO internal
+    function _freeUpCollateral(uint256 _usdCollatNeeded, bool force) internal {
         bool _needMax = _usdCollatNeeded == max;
 
         cBorrowed.accrueInterest();
@@ -292,7 +331,7 @@ contract Strategy is BaseStrategy {
         }
     }
 
-    function _redeem(uint256 _wantNeeded) public returns (uint256 _wantShort){//TODO internal
+    function _redeem(uint256 _wantNeeded) internal returns (uint256 _wantShort){
         _freeUpCollateral(_usdToBase(_wantNeeded, cWant, true), false);
 
         uint256 _wantAllowed = _usdToBase(usdCollatFree(), cWant, false);
@@ -333,7 +372,7 @@ contract Strategy is BaseStrategy {
     }
 
 
-    function _rebalance() public {//TODO internal
+    function _rebalance() internal {
         cBorrowed.accrueInterest();
         (uint256 _usdBorrowAdjustment, bool _neg) = _calculateUsdBorrowAdjustment();
         if (_neg) {
@@ -352,7 +391,7 @@ contract Strategy is BaseStrategy {
     }
 
     // sell profits earned from delegated vault
-    function _sellDelegatedProfits() public {//TODO internal
+    function _sellDelegatedProfits() internal {
         cBorrowed.accrueInterest();
         uint256 _valueOfBorrowed = valueOfBorrowedOwed();
         uint256 _valueOfDelegated = valueOfDelegated();
@@ -372,7 +411,7 @@ contract Strategy is BaseStrategy {
         }
     }
 
-    function _sellLendingProfits() public {//TODO internal
+    function _sellLendingProfits() internal {
         cWant.accrueInterest();
         uint256 _debt = vault.strategies(address(this)).totalDebt;
         uint256 _totalAssets = balanceOfBase(cWant);

@@ -97,7 +97,8 @@ def vault(pm, gov, rewards, guardian, management, token):
 
 @pytest.fixture
 def strategy(strategist, keeper, vault, Strategy, gov, cWant, cBorrowed, delegatedVault, cSupplied, name):
-    strategy = strategist.deploy(Strategy, vault, cWant, cBorrowed, delegatedVault, name)
+    strategy = strategist.deploy(Strategy, vault)
+    strategy.initialize(vault, cWant, cBorrowed, delegatedVault, name, {"from": strategist})
     strategy.setKeeper(keeper, {"from": strategist})
     strategy.setMaxReportDelay(86400, {"from": strategist})  # 1 day
     strategy.setDebtThreshold(100000 * 1e18, {"from": strategist})
