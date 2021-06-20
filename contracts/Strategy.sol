@@ -213,14 +213,14 @@ contract Strategy is BaseStrategy {
     //
 
     // repay borrowed position to free up collateral.
-    function _freeUpCollateral(uint256 _usdCollatNeeded, bool force) public {//TODO internal
+    function _freeUpCollateral(uint256 _usdCollatNeeded, bool force) internal {
         bool _needMax = _usdCollatNeeded == max;
 
         cBorrowed.accrueInterest();
 
         uint256 _usdCollatFree;
         if (!force) {
-            _usdCollatFree = usdCollatFree();
+            _usdCollatFree = _usdCollateralFree();
         }
         if (_usdCollatNeeded > _usdCollatFree) {
             uint256 _usdMoreNeeded = _usdCollatNeeded.sub(_usdCollatFree);
@@ -243,11 +243,11 @@ contract Strategy is BaseStrategy {
     }
 
     // if unwinding delegatedVault was not enough (delegatedVault pps lowered, or market interest), start trading want -> eth to free up collateral
-    function _repayWithWant(uint256 _usdMoreNeeded, bool force) public {
+    function _repayWithWant(uint256 _usdMoreNeeded, bool force) internal {
         bool _needMax = _usdMoreNeeded == max;
         uint256 _usdCollatFree;
         if (!force) {
-            _usdCollatFree = usdCollatFree();
+            _usdCollatFree = _usdCollateralFree();
         }
         if (_usdMoreNeeded > _usdCollatFree) {
             uint256 _usdToRepay = _needMax ? max : _usdMoreNeeded.sub(_usdCollatFree).mul(targetCollateralFactor).div(1e18);
@@ -273,7 +273,7 @@ contract Strategy is BaseStrategy {
                     _usdToRepay = _usdToBase(_wantToRepay, cWant, true);
 
                     // make sure we have enough cWant freed to do the redeem
-                    if (usdCollatFree() > _usdToRepay && valueOfCWant() > _usdToRepay) {
+                    if (_usdCollateralFree() > _usdToRepay && valueOfCWant() > _usdToRepay) {
                         cWant.redeemUnderlying(_wantToRepay);
                         router.swapTokensForExactTokens(_borrowedToRepay, balanceOfWant(), wantWethPath, address(this), now);
                         weth.withdraw(weth.balanceOf(address(this)));
@@ -283,7 +283,7 @@ contract Strategy is BaseStrategy {
             }
         }}
 
-    function usdCollatFree() public returns (uint256 _usdFree){
+    function _usdCollateralFree() internal returns (uint256 _usdFree){
         uint256 _usdCollatToMaintain = valueOfBorrowedOwed().mul(1e18).div(targetCollateralFactor);
         uint256 _usdTotalCollat = valueOfTotalCollateral();
         if (_usdTotalCollat > _usdCollatToMaintain) {
@@ -291,10 +291,10 @@ contract Strategy is BaseStrategy {
         }
     }
 
-    function _redeem(uint256 _wantNeeded) public returns (uint256 _wantShort){//TODO internal
+    function _redeem(uint256 _wantNeeded) internal returns (uint256 _wantShort){
         _freeUpCollateral(_usdToBase(_wantNeeded, cWant, true), false);
 
-        uint256 _wantAllowed = _usdToBase(usdCollatFree(), cWant, false);
+        uint256 _wantAllowed = _usdToBase(_usdCollateralFree(), cWant, false);
         uint256 _wantCash = cWant.getCash();
         uint256 _wantHeld = balanceOfBase(cWant);
 
@@ -332,7 +332,7 @@ contract Strategy is BaseStrategy {
     }
 
 
-    function _rebalance() public {//TODO internal
+    function _rebalance() internal {
         cBorrowed.accrueInterest();
         (uint256 _usdBorrowAdjustment, bool _neg) = _calculateUsdBorrowAdjustment();
         if (_neg) {
@@ -351,7 +351,7 @@ contract Strategy is BaseStrategy {
     }
 
     // sell profits earned from delegated vault
-    function _sellDelegatedProfits() public {//TODO internal
+    function _sellDelegatedProfits() internal {
         cBorrowed.accrueInterest();
         uint256 _valueOfBorrowed = valueOfBorrowedOwed();
         uint256 _valueOfDelegated = valueOfDelegated();
@@ -371,7 +371,7 @@ contract Strategy is BaseStrategy {
         }
     }
 
-    function _sellLendingProfits() public {//TODO internal
+    function _sellLendingProfits() internal {
         cWant.accrueInterest();
         uint256 _debt = vault.strategies(address(this)).totalDebt;
         uint256 _totalAssets = balanceOfBase(cWant);
