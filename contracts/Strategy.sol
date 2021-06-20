@@ -99,7 +99,7 @@ contract Strategy is BaseStrategy {
         want.safeApprove(address(cWant), max);
         want.safeApprove(address(router), max);
         borrowed.safeApprove(address(delegatedVault), max);
-        weth.approve(address(router), max);
+        borrowed.approve(address(router), max);
         reward.approve(address(router), max);
         reward.approve(address(xInv), max);
 
@@ -477,10 +477,13 @@ contract Strategy is BaseStrategy {
     }
 
     function setRouter(address _address) external onlyGovernance {
-        // REVIEW: what about reward, weth, borrowed?
+        // want.safeApprove(address(router), 0);
+        // borrowed.approve(address(router), 0);
+        // reward.approve(address(router), 0);
+
         router = IUniswapV2Router02(_address);
         want.safeApprove(address(router), max);
-        weth.approve(address(router), max);
+        borrowed.approve(address(router), max);
         reward.approve(address(router), max);
     }
 
