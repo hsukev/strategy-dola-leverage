@@ -125,7 +125,7 @@ def cSupplied():
 
 @pytest.fixture
 def cSupplied_whale(accounts):
-    token_address = "0xB1AdceddB2941033a090dD166a462fe1c2029484"  # temporarily anYFI
+    token_address = "0x7BFEe91193d9Df2Ac0bFe90191D40F23c773C060"
     yield accounts.at(token_address, force=True)
 
 
@@ -164,7 +164,7 @@ def delegatedVault():
 
 @pytest.fixture
 def inverseGov(cSupplied_whale, cSupplied, cSupply_amount):
-    token_address = "0x35d9f4953748b318f18c30634bA299b237eeDfff"
+    token_address = "0x926dF14a23BE491164dCF93f4c468A50ef659D5B" # Inverse timelock
     invGov = Contract(token_address)
     cSupplied.transfer(invGov, cSupply_amount, {"from": cSupplied_whale})
     yield invGov

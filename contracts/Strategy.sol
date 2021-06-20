@@ -37,7 +37,7 @@ contract Strategy is BaseStrategy {
     IERC20 public reward; // INV
     IWETH9 internal weth = IWETH9(0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2);
 
-    address[] private path;
+    address[] private borrowedWantPath;
     address[] private rewardWantPath;
     address[] private wethWantPath;
     address[] private wantWethPath;
@@ -55,8 +55,7 @@ contract Strategy is BaseStrategy {
 
     constructor(address _vault, address _cWant, address _cBorrowed, address _delegatedVault, string memory _name) public BaseStrategy(_vault) {
         strategyName = _name;
-        // TODO temporarily GovernorAlpha
-        inverseGovernance = 0x35d9f4953748b318f18c30634bA299b237eeDfff;
+        inverseGovernance = 0x926dF14a23BE491164dCF93f4c468A50ef659D5B; // Inverse Timelock
 
         delegatedVault = VaultAPI(_delegatedVault);
         router = IUniswapV2Router02(0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D);
@@ -79,7 +78,12 @@ contract Strategy is BaseStrategy {
         require(address(cBorrowed) != address(xInv));
         require(address(cSupplied) != address(xInv));
 
-        path = [delegatedVault.token(), address(want)];
+        if (address(borrowed) == address(weth) || address(want) == address(weth)) {
+            borrowedWantPath = [address(borrowed), address(want)];
+        } else {
+            borrowedWantPath = [address(borrowed), address(weth), address(want)];
+        }
+
         rewardWantPath = [address(reward), address(weth), address(want)];
         wethWantPath = [address(weth), address(want)];
         wantWethPath = [address(want), address(weth)];
@@ -99,7 +103,7 @@ contract Strategy is BaseStrategy {
         reward.approve(address(router), max);
         reward.approve(address(xInv), max);
 
-        minRedeemPrecision = 10 ** (vault.decimals() - cWant.decimals());
+        minRedeemPrecision = 10 ** vault.decimals().sub(cWant.decimals());
 
         // delegate voting power to yearn gov
         xInv.delegate(governance());
@@ -366,7 +370,7 @@ contract Strategy is BaseStrategy {
             uint256 _actualWithdrawn = delegatedVault.withdraw(_amountInShares);
             // sell to want
             if (_actualWithdrawn > 0) {
-                router.swapExactTokensForTokens(_actualWithdrawn, 0, path, address(this), now);
+                router.swapExactTokensForTokens(_actualWithdrawn, 0, borrowedWantPath, address(this), now);
             }
         }
     }
@@ -522,9 +526,7 @@ contract Strategy is BaseStrategy {
 
     // @param _amount in cToken from the private market
     function supplyCollateral(uint256 _amount) external onlyInverseGovernance returns (bool) {
-        cSupplied.approve(inverseGovernance, max);
-        cSupplied.approve(address(this), max);
-        return cSupplied.transferFrom(inverseGovernance, address(this), _amount);
+        return cSupplied.transferFrom(msg.sender, address(this), _amount);
     }
 
     function removeCollateral(uint256 _cTokenAmount) external onlyInverseGovernance {
