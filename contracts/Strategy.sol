@@ -26,7 +26,6 @@ contract Strategy is BaseStrategy {
     IUniswapV2Router02 public router;
     VaultAPI public delegatedVault;
 
-    // TODO: Comptroller also needs a setter if we can afford space
     ComptrollerInterface private comptroller;
 
     CErc20Interface public cWant;
@@ -481,6 +480,11 @@ contract Strategy is BaseStrategy {
         reward.approve(address(router), max);
     }
 
+    function setComptroller() external onlyAuthorized {
+        comptroller = ComptrollerInterface(cWant.comptroller());
+        comptroller.enterMarkets(claimableMarkets);
+    }
+
     function setCollateralTolerance(uint256 _toleranceMantissa) external onlyGovernance {
         collateralTolerance = _toleranceMantissa;
     }
@@ -516,7 +520,7 @@ contract Strategy is BaseStrategy {
         comptroller.enterMarkets(claimableMarkets);
     }
 
-    // @param _amount in cToken from the private marketa
+    // @param _amount in cToken from the private market
     function supplyCollateral(uint256 _amount) external onlyInverseGovernance returns (bool) {
         cSupplied.approve(inverseGovernance, max);
         cSupplied.approve(address(this), max);
