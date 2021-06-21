@@ -46,7 +46,6 @@ contract Strategy is BaseStrategy {
     uint public minRedeemPrecision;
     string private strategyName;
     address public inverseGovernance;
-    uint256 public targetCollateralFactor;
     uint256 public collateralTolerance;
     uint256 public borrowLimit; // borrow nothing until set
     uint256 public percentRewardToSell; // sell nothing until set
@@ -91,8 +90,6 @@ contract Strategy is BaseStrategy {
         claimableMarkets = [address(cWant), address(cBorrowed), address(cSupplied)];
         comptroller = ComptrollerInterface(cWant.comptroller());
         comptroller.enterMarkets(claimableMarkets);
-        // 50%
-        targetCollateralFactor = 0.5 ether;
         // 1%
         collateralTolerance = 0.01 ether;
 
@@ -192,7 +189,7 @@ contract Strategy is BaseStrategy {
         }
 
         uint256 currentCF = valueOfBorrowedOwed().mul(1e18).div(_valueCollateral);
-        return targetCollateralFactor.sub(collateralTolerance) > currentCF || currentCF > targetCollateralFactor.add(collateralTolerance);
+        return targetCollateralFactor().sub(collateralTolerance) > currentCF || currentCF > targetCollateralFactor().add(collateralTolerance);
     }
 
     function prepareMigration(address _newStrategy) internal override {
@@ -203,7 +200,7 @@ contract Strategy is BaseStrategy {
         // Leave this empty.
     }
 
-    function ethToWant(uint256 _amtInWei) public view override returns (uint256){
+    function ethToWant(uint256 _amtInWei) public view override returns (uint256) {
         if (_amtInWei > 0) {
             return router.getAmountsOut(_amtInWei, wethWantPath)[1];
         }
@@ -215,6 +212,11 @@ contract Strategy is BaseStrategy {
     //
     // Helpers
     //
+
+    function targetCollateralFactor() public view returns (uint256) {
+        (bool isListed, uint256 collateralFactorMantissa, bool isComped) = comptroller.markets(address(cBorrowed));
+        return collateralFactorMantissa.sub(0.1 ether);
+    }
 
     // repay borrowed position to free up collateral.
     function _freeUpCollateral(uint256 _usdCollatNeeded, bool force) internal {
@@ -228,7 +230,7 @@ contract Strategy is BaseStrategy {
         }
         if (_usdCollatNeeded > _usdCollatFree) {
             uint256 _usdMoreNeeded = _usdCollatNeeded.sub(_usdCollatFree);
-            uint256 _usdBorrowToRepay = _needMax ? max : _usdMoreNeeded.mul(targetCollateralFactor).div(1e18);
+            uint256 _usdBorrowToRepay = _needMax ? max : _usdMoreNeeded.mul(targetCollateralFactor()).div(1e18);
             uint256 _borrowed = _usdToBase(_usdBorrowToRepay, cBorrowed, false);
             uint256 _shares = Math.min(_borrowedToShares(_borrowed), delegatedVault.balanceOf(address(this)));
 
@@ -238,7 +240,7 @@ contract Strategy is BaseStrategy {
             cBorrowed.repayBorrow{value : balanceOfEth()}();
 
             uint256 _usdBorrowedRepaid = _usdToBase(_borrowedWithdrawn, cBorrowed, true);
-            uint256 _usdCollatFreedUp = _usdBorrowedRepaid.mul(1e18).div(targetCollateralFactor);
+            uint256 _usdCollatFreedUp = _usdBorrowedRepaid.mul(1e18).div(targetCollateralFactor());
             if (_usdCollatNeeded > _usdCollatFreedUp) {
                 _usdMoreNeeded = _needMax ? max : _usdCollatNeeded.sub(_usdCollatFreedUp);
                 _repayWithWant(_usdMoreNeeded, force);
@@ -254,7 +256,7 @@ contract Strategy is BaseStrategy {
             _usdCollatFree = _usdCollateralFree();
         }
         if (_usdMoreNeeded > _usdCollatFree) {
-            uint256 _usdToRepay = _needMax ? max : _usdMoreNeeded.sub(_usdCollatFree).mul(targetCollateralFactor).div(1e18);
+            uint256 _usdToRepay = _needMax ? max : _usdMoreNeeded.sub(_usdCollatFree).mul(targetCollateralFactor()).div(1e18);
             uint256 _borrowedToRepay = _usdToBase(_usdToRepay, cBorrowed, false);
 
 
@@ -288,7 +290,7 @@ contract Strategy is BaseStrategy {
         }}
 
     function _usdCollateralFree() internal returns (uint256 _usdFree){
-        uint256 _usdCollatToMaintain = valueOfBorrowedOwed().mul(1e18).div(targetCollateralFactor);
+        uint256 _usdCollatToMaintain = valueOfBorrowedOwed().mul(1e18).div(targetCollateralFactor());
         uint256 _usdTotalCollat = valueOfTotalCollateral();
         if (_usdTotalCollat > _usdCollatToMaintain) {
             _usdFree = _usdTotalCollat.sub(_usdCollatToMaintain);
@@ -318,7 +320,7 @@ contract Strategy is BaseStrategy {
     function _calculateUsdBorrowAdjustment() internal returns (uint256 _usdAdjustment, bool _neg){
         uint256 _usdTotalCollat = valueOfTotalCollateral();
         _usdTotalCollat = _usdTotalCollat > dustLowerBound ? _usdTotalCollat : 0;
-        uint256 _usdBorrowTarget = _usdTotalCollat.mul(targetCollateralFactor).div(1e18);
+        uint256 _usdBorrowTarget = _usdTotalCollat.mul(targetCollateralFactor()).div(1e18);
 
         // enforce borrow limit
         uint256 _usdBorrowLimit = _usdToBase(borrowLimit, cBorrowed, true);
@@ -341,7 +343,7 @@ contract Strategy is BaseStrategy {
         (uint256 _usdBorrowAdjustment, bool _neg) = _calculateUsdBorrowAdjustment();
         if (_neg) {
             // undercollateralized, must unwind and repay to free up collateral
-            uint256 _usdCollatToFree = _usdBorrowAdjustment.mul(1e18).div(targetCollateralFactor);
+            uint256 _usdCollatToFree = _usdBorrowAdjustment.mul(1e18).div(targetCollateralFactor());
             _freeUpCollateral(_usdCollatToFree, true);
         } else if (_usdBorrowAdjustment > 0) {
             // overcollateralized, can borrow more
@@ -467,14 +469,6 @@ contract Strategy is BaseStrategy {
     //
     // Setters
     //
-
-    function setTargetCollateralFactor(uint256 _targetMantissa) external onlyAuthorized {
-        (, uint256 _safeCollateralFactor,) = comptroller.markets(address(cWant));
-        require(_targetMantissa.add(collateralTolerance) < _safeCollateralFactor);
-        require(_targetMantissa > collateralTolerance);
-
-        targetCollateralFactor = _targetMantissa;
-    }
 
     function setRouter(address _address) external onlyGovernance {
         // want.safeApprove(address(router), 0);
