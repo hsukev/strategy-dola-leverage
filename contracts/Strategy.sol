@@ -306,7 +306,7 @@ contract Strategy is BaseStrategy {
 
         uint256 _wantRedeemable = Math.min(Math.min(Math.min(_wantNeeded, _wantCash), _wantHeld), _wantAllowed);
         if (_wantRedeemable > minRedeemPrecision) {
-            cWant.redeemUnderlying(_wantRedeemable) == NO_ERROR;
+            require(cWant.redeemUnderlying(_wantRedeemable) == NO_ERROR);
         }
 
         uint256 _wantAfter = balanceOfWant();
