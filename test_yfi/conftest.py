@@ -39,13 +39,13 @@ def keeper(accounts):
 
 @pytest.fixture
 def token(interface):
-    token_address = "0x865377367054516e17014ccded1e7d814edc9ce4"  # DOLA
+    token_address = "0x0bc529c00C6401aEF6D220BE8C6Ea1667F6Ad93e"  # YFI
     yield interface.ERC20(token_address)
 
 
 @pytest.fixture
 def token_whale(accounts):
-    yield accounts.at("0x9547429C0e2c3A8B88C6833B58FCE962734C0E8C", force=True)  # DOLA 3CRV Curve Metapool
+    yield accounts.at("0x3ff33d9162aD47660083D7DC4bC02Fb231c81677", force=True)  # YFI whale
 
 @pytest.fixture(autouse=True)
 def isolation(fn_isolation):
@@ -53,7 +53,7 @@ def isolation(fn_isolation):
 
 @pytest.fixture
 def amount(accounts, token, user, token_whale):
-    amount = 100000 * 10 ** token.decimals()
+    amount = 2 * 10 ** token.decimals()
     # In order to get some funds for the token you are about to use,
     # it impersonate an exchange address to use it's funds.
     token.transfer(user, amount, {"from": token_whale})
@@ -80,7 +80,7 @@ def weth_amout(user, weth):
 
 @pytest.fixture
 def name():
-    return "StrategyDolaEthLeverage"
+    return "StrategyYfiEthLeverage"
 
 
 @pytest.fixture
@@ -108,24 +108,24 @@ def strategy(strategist, keeper, vault, Strategy, gov, cWant, cBorrowed, delegat
 
 @pytest.fixture
 def cWant():
-    token_address = "0x7fcb7dac61ee35b3d4a51117a7c58d53f0a8a670"  # anDOLA
+    token_address = "0xde2af899040536884e062D3a334F2dD36F34b4a4"  # anYFI
     yield Contract(token_address)
 
 
 @pytest.fixture
 def cwant_whale(accounts):
-    yield accounts.at("0x5E075E40D01c82B6Bf0B0ecdb4Eb1D6984357EF7", force=True)  # Fed
+    yield accounts.at("0xB1AdceddB2941033a090dD166a462fe1c2029484", force=True)  # Fed
 
 
 @pytest.fixture
 def cSupplied():
-    token_address = "0xde2af899040536884e062D3a334F2dD36F34b4a4"  # temporarily anYFI
+    token_address = "0xD60B06B457bFf7fc38AC5E7eCE2b5ad16B288326"  # temporarily anXSUSHI
     yield Contract(token_address)
 
 
 @pytest.fixture
 def cSupplied_whale(accounts):
-    token_address = "0x7BFEe91193d9Df2Ac0bFe90191D40F23c773C060"
+    token_address = "0x7BFEe91193d9Df2Ac0bFe90191D40F23c773C060"  # temporarily anXSUSHI
     yield accounts.at(token_address, force=True)
 
 
@@ -164,7 +164,7 @@ def delegatedVault():
 
 @pytest.fixture
 def inverseGov(cSupplied_whale, cSupplied, cSupply_amount):
-    token_address = "0x926dF14a23BE491164dCF93f4c468A50ef659D5B" # Inverse timelock
+    token_address = "0x35d9f4953748b318f18c30634bA299b237eeDfff"
     invGov = Contract(token_address)
     cSupplied.transfer(invGov, cSupply_amount, {"from": cSupplied_whale})
     yield invGov
@@ -172,7 +172,7 @@ def inverseGov(cSupplied_whale, cSupplied, cSupply_amount):
 
 @pytest.fixture
 def cSupply_amount(cSupplied):
-    yield 10 * 10 ** cSupplied.decimals()
+    yield 100000 * 10 ** cSupplied.decimals()
 
 
 @pytest.fixture(scope="session")

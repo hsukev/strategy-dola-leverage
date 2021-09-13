@@ -8,3 +8,9 @@ reports/
 
 # Node/npm
 node_modules/
+
+.vscode
+.idea
+.github
+.pytest_cache
+.mypy_cache
